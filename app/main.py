@@ -1,12 +1,14 @@
 """
 CapimParking - Main FastAPI Application.
 Sistema de Estacionamento Inteligente para Capim Dourado Shopping.
-Hackarun 2026 | Equipe 44 - Aerodactyle
+Hackarun 2026 | Equipe 43 - Aerodactyle
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from pathlib import Path
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db, lifespan as db_lifespan
@@ -54,12 +56,12 @@ app = FastAPI(
     - **Relatos colaborativos** - Estimativa de disponibilidade em tempo real
     - **Painel administrativo** - Métricas de ocupação, tickets e receita
 
-    ### Hackarun 2026 | Equipe 44 - Aerodactyle
+    ### Hackarun 2026 | Equipe 43 - Aerodactyle
     **Integrantes:** Guilherme Abreu · Álvaro Franco · Flávio Antônio · Matheus Dassoler
     """,
-    version="1.0.0",
+    version="2.0.0",
     contact={
-        "name": "Equipe 44 - Aerodactyle",
+        "name": "Equipe 43 - Aerodactyle",
         "email": "hackarun2026@aerodactyle.dev",
     },
     license_info={
@@ -116,23 +118,23 @@ async def health_check(db: Session = Depends(get_db)):
         "status": "healthy" if db_status == "connected" else "degraded",
         "timestamp": __import__("datetime").datetime.utcnow().isoformat(),
         "database": db_status,
-        "version": "1.0.0",
+        "version": "2.0.0",
         "service": "CapimParking",
     }
 
 
 # Root endpoint
-@app.get("/", tags=["Sistema"], summary="Informações da API")
+@app.get("/api/info", tags=["Sistema"], summary="Informações da API")
 async def root():
     """
-    Endpoint raiz com informações básicas da API.
+    Informações básicas da API (a raiz "/" serve o frontend).
     """
     return {
         "service": "CapimParking",
         "description": "Sistema de Estacionamento Inteligente - Capim Dourado Shopping",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "event": "Hackarun 2026",
-        "team": "Equipe 44 - Aerodactyle",
+        "team": "Equipe 43 - Aerodactyle",
         "members": [
             "Guilherme Abreu",
             "Álvaro Franco",
@@ -143,6 +145,13 @@ async def root():
         "health": "/health",
         "config": "/config",
     }
+
+
+# Frontend estático servido pela própria API (mesma origem, sem CORS) - DT5.
+# Deve ser o ÚLTIMO mount/rota: "/" captura o que nenhuma rota da API atendeu.
+FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
+if FRONTEND_DIR.is_dir():
+    app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
 
 
 # Run directly with: python -m app.main
