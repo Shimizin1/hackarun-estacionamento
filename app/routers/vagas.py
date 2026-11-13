@@ -1,6 +1,7 @@
 """
 Vagas router - endpoints for parking spot management.
 """
+from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -14,7 +15,7 @@ from app.schemas import (
     CarregadorResponse, CarregadorCreate, CarregadorUpdate,
     RelatoColaborativoRequest, RelatoColaborativoResponse,
 )
-from app.models import TipoVaga, StatusVaga
+from app.models import TipoVaga, StatusVaga, Vaga as VagaModel
 
 router = APIRouter(prefix="/vagas", tags=["Vagas"])
 
@@ -60,6 +61,30 @@ def sugerir_vaga_proxima(
             detail=f"Nenhuma vaga {tipo_vaga.value} disponível em todo o estacionamento"
         )
     return sugestao
+
+
+# Relatos colaborativos
+@router.post("/relatos", response_model=RelatoColaborativoResponse, status_code=status.HTTP_201_CREATED)
+def criar_relato(relato: RelatoColaborativoRequest, db: Session = Depends(get_db)):
+    """Registrar relato colaborativo de disponibilidade."""
+    relato_obj = VagaService.registrar_relato_colaborativo(
+        db,
+        setor_id=relato.setor_id,
+        tipo_vaga=relato.tipo_vaga,
+        status=relato.status,
+        confianca=relato.confianca,
+    )
+    return RelatoColaborativoResponse.model_validate(relato_obj)
+
+
+@router.get("/relatos", response_model=List[RelatoColaborativoResponse])
+def listar_relatos(
+    setor_id: Optional[int] = Query(None, gt=0),
+    db: Session = Depends(get_db),
+):
+    """Listar relatos colaborativos ativos."""
+    relatos = VagaService.get_relatos_ativos(db, setor_id)
+    return [RelatoColaborativoResponse.model_validate(r) for r in relatos]
 
 
 @router.get("/{vaga_id}", response_model=VagaResponse)
@@ -156,32 +181,3 @@ def atualizar_carregador(carregador_id: int, carregador_update: CarregadorUpdate
     db.commit()
     db.refresh(carregador)
     return CarregadorResponse.model_validate(carregador)
-
-
-# Relatos colaborativos
-@router.post("/relatos", response_model=RelatoColaborativoResponse, status_code=status.HTTP_201_CREATED)
-def criar_relato(relato: RelatoColaborativoRequest, db: Session = Depends(get_db)):
-    """Registrar relato colaborativo de disponibilidade."""
-    relato_obj = VagaService.registrar_relato_colaborativo(
-        db,
-        setor_id=relato.setor_id,
-        tipo_vaga=relato.tipo_vaga,
-        status=relato.status,
-        confianca=relato.confianca,
-    )
-    return RelatoColaborativoResponse.model_validate(relato_obj)
-
-
-@router.get("/relatos", response_model=List[RelatoColaborativoResponse])
-def listar_relatos(
-    setor_id: Optional[int] = Query(None, gt=0),
-    db: Session = Depends(get_db),
-):
-    """Listar relatos colaborativos ativos."""
-    relatos = VagaService.get_relatos_ativos(db, setor_id)
-    return [RelatoColaborativoResponse.model_validate(r) for r in relatos]
-
-
-# Add datetime import
-from datetime import datetime
-from app.models import Vaga as VagaModel

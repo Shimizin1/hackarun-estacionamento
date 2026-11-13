@@ -4,7 +4,7 @@ Provides metrics, occupancy stats, and administrative operations.
 """
 from datetime import datetime, timedelta
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, case
 from app.models import (
     Vaga, Setor, Ticket, Carregador, Configuracao,
@@ -274,7 +274,3 @@ class AdminService:
             "configuracoes": [{"chave": c.chave, "valor": c.valor} for c in db.query(Configuracao).all()],
             "exportado_em": datetime.utcnow().isoformat(),
         }
-
-
-# Add joinedload import
-from sqlalchemy.orm import joinedload

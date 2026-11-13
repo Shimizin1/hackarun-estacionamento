@@ -1,6 +1,7 @@
 """
 Config router - endpoints for system configuration.
 """
+from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -67,7 +68,3 @@ def atualizar_configuracao(chave: str, config_update: ConfiguracaoUpdate, db: Se
     db.refresh(config)
     ConfigService.invalidate_cache()
     return config
-
-
-# Add datetime import
-from datetime import datetime

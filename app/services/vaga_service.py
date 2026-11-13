@@ -6,7 +6,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_, or_, update
+from sqlalchemy import func, and_, or_, update, case
 from app.models import (
     Vaga, Setor, Carregador, RelatoColaborativo,
     TipoVaga, StatusVaga, StatusCarregador, OrigemDado
@@ -285,9 +285,9 @@ class VagaService:
             Setor.cor,
             Setor.andar,
             func.count(Vaga.id).label("total"),
-            func.sum(func.case((Vaga.status == StatusVaga.LIVRE, 1), else_=0)).label("livres"),
-            func.sum(func.case((Vaga.status == StatusVaga.OCUPADA, 1), else_=0)).label("ocupadas"),
-            func.sum(func.case((Vaga.status == StatusVaga.MANUTENCAO, 1), else_=0)).label("manutencao"),
+            func.sum(case((Vaga.status == StatusVaga.LIVRE, 1), else_=0)).label("livres"),
+            func.sum(case((Vaga.status == StatusVaga.OCUPADA, 1), else_=0)).label("ocupadas"),
+            func.sum(case((Vaga.status == StatusVaga.MANUTENCAO, 1), else_=0)).label("manutencao"),
         ).join(Vaga).group_by(Setor.id).all()
 
         return [
@@ -311,8 +311,8 @@ class VagaService:
         result = db.query(
             Vaga.tipo,
             func.count(Vaga.id).label("total"),
-            func.sum(func.case((Vaga.status == StatusVaga.LIVRE, 1), else_=0)).label("livres"),
-            func.sum(func.case((Vaga.status == StatusVaga.OCUPADA, 1), else_=0)).label("ocupadas"),
+            func.sum(case((Vaga.status == StatusVaga.LIVRE, 1), else_=0)).label("livres"),
+            func.sum(case((Vaga.status == StatusVaga.OCUPADA, 1), else_=0)).label("ocupadas"),
         ).group_by(Vaga.tipo).all()
 
         return [
