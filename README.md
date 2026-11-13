@@ -57,6 +57,8 @@ Depois abra:
 
 ## Reiniciar o banco
 
+**Pare a API (Ctrl+C) antes**: no Windows o arquivo do banco fica travado enquanto ela roda.
+
 O seed só roda quando o banco está vazio. Para voltar ao estado inicial (356 vagas, 10 tickets de exemplo):
 
 ```powershell

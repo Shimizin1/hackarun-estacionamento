@@ -7,7 +7,13 @@ removidos = 0
 for sufixo in ("", "-journal", "-wal", "-shm"):
     arquivo = DB.with_name(DB.name + sufixo)
     if arquivo.exists():
-        arquivo.unlink()
+        try:
+            arquivo.unlink()
+        except PermissionError:
+            raise SystemExit(
+                f"Não foi possível remover {arquivo.name}: o arquivo está em uso. "
+                "Pare a API (Ctrl+C) e rode o script de novo."
+            )
         removidos += 1
 
 print(f"Banco removido ({removidos} arquivo(s)). Suba a API para recriar com o seed." if removidos
