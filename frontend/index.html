@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="CapimParking - Sistema de Estacionamento Inteligente do Capim Dourado Shopping">
+    <meta name="theme-color" content="#B5934E">
+    <title>CapimParking - Estacione com inteligência. Aproveite sem preocupação.</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🅿️</text></svg>">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Pular para o conteúdo principal</a>
+
+    <!-- Accessibility Toolbar -->
+    <div id="a11y-toolbar" class="a11y-toolbar" role="toolbar" aria-label="Opções de acessibilidade">
+        <button id="btn-high-contrast" class="a11y-btn" aria-pressed="false" aria-label="Alternar alto contraste">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span>Alto Contraste</span>
+        </button>
+        <button id="btn-increase-font" class="a11y-btn" aria-label="Aumentar tamanho da fonte">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><text x="0" y="18" font-size="18">A</text><path d="M4 20h16M4 12h16M4 4h16"/></svg>
+            <span>A+</span>
+        </button>
+        <button id="btn-decrease-font" class="a11y-btn" aria-label="Diminuir tamanho da fonte">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><text x="0" y="18" font-size="12">A</text><path d="M4 20h16M4 12h16M4 4h16"/></svg>
+            <span>A-</span>
+        </button>
+        <button id="btn-tts" class="a11y-btn" aria-label="Ler página em voz alta">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            <span>Leitura</span>
+        </button>
+    </div>
+
+    <!-- Screen Reader Announcements -->
+    <div id="sr-announcer" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <main id="main-content" role="main">
+        <!-- Tela 1: Boas-vindas / Início -->
+        <section id="screen-welcome" class="screen active" aria-labelledby="welcome-title">
+            <header class="screen-header">
+                <div class="logo-container">
+                    <svg class="logo" viewBox="0 0 120 120" aria-hidden="true" role="img" aria-label="Logotipo CapimParking">
+                        <defs>
+                            <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#D4A843"/>
+                                <stop offset="50%" style="stop-color:#B5934E"/>
+                                <stop offset="100%" style="stop-color:#8B7338"/>
+                            </linearGradient>
+                        </defs>
+                        <!-- Fibras do capim-dourado entrelaçadas formando P -->
+                        <path d="M30 90 Q60 60 90 90" stroke="url(#goldGradient)" stroke-width="6" fill="none" stroke-linecap="round"/>
+                        <path d="M30 75 Q60 45 90 75" stroke="url(#goldGradient)" stroke-width="5" fill="none" stroke-linecap="round" opacity="0.8"/>
+                        <path d="M30 60 Q60 30 90 60" stroke="url(#goldGradient)" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.6"/>
+                        <!-- Pin de localização / P de Parking -->
+                        <circle cx="60" cy="60" r="22" fill="url(#goldGradient)" opacity="0.9"/>
+                        <path d="M60 45 L60 65 L75 75" stroke="#352B25" stroke-width="3.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                </div>
+                <h1 id="welcome-title">CapimParking</h1>
+                <p class="tagline">Estacione com inteligência. Aproveite sem preocupação.</p>
+            </header>
+
+            <div class="welcome-content">
+                <p class="welcome-message">Bem-vindo ao CapimParking. Vamos encontrar o melhor lugar para você estacionar?</p>
+
+                <div class="action-grid" role="group" aria-label="Ações principais">
+                    <button id="btn-find-parking" class="btn btn-primary btn-lg" aria-describedby="find-desc">
+                        <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                        <span>Encontrar Estacionamento</span>
+                    </button>
+                    <div id="find-desc" class="sr-only">Iniciar busca por vaga selecionando tipo e setor preferido</div>
+
+                    <button id="btn-my-ticket" class="btn btn-secondary btn-lg" aria-describedby="ticket-desc">
+                        <svg aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6M9 13h6M9 17h4"/></svg>
+                        <span>Já Estacionei / Consultar Ticket</span>
+                    </button>
+                    <div id="ticket-desc" class="sr-only">Recuperar seu ticket ativo ou consultar histórico</div>
+                </div>
+
+                <div class="info-cards" role="list" aria-label="Informações essenciais">
+                    <article class="info-card" role="listitem">
+                        <svg class="info-icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                        <h3>Tolerância 15 min</h3>
+                        <p>Entrada e saída em até 15 minutos é gratuita</p>
+                    </article>
+                    <article class="info-card" role="listitem">
+                        <svg class="info-icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        <h3>Vagas Acessíveis</h3>
+                        <p>Idoso, PCD, Neurodivergente, Gestante, Elétrico</p>
+                    </article>
+                    <article class="info-card" role="listitem">
+                        <svg class="info-icon" aria-hidden="true" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>
+                        <h3>Sem Cadastro</h3>
+                        <p>Use direto, sem login nem burocracia</p>
+                    </article>
+                </div>
+            </div>
+
+            <footer class="screen-footer">
+                <p>Capim Dourado Shopping - Palmas, TO</p>
+                <p>Hackarun 2026 | Equipe 44 Aerodactyle</p>
+            </footer>
+        </section>
+
+        <!-- Tela 2: Seleção de Tipo de Vaga -->
+        <section id="screen-spot-type" class="screen" aria-labelledby="spot-type-title" hidden>
+            <header class="screen-header">
+                <button id="btn-back-welcome" class="btn-back" aria-label="Voltar à tela inicial">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 id="spot-type-title">Tipo de Vaga</h1>
+            </header>
+
+            <div class="screen-content">
+                <p class="screen-subtitle">Selecione o tipo de vaga que você precisa</p>
+
+                <div id="spot-type-grid" class="spot-type-grid" role="radiogroup" aria-label="Tipos de vaga disponíveis" aria-required="true">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="screen-actions">
+                    <button id="btn-spot-type-back" class="btn btn-secondary" type="button">Cancelar</button>
+                    <button id="btn-spot-type-next" class="btn btn-primary" type="button" disabled aria-disabled="true">Próximo: Escolher Setor</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tela 3: Seleção de Setor -->
+        <section id="screen-sector" class="screen" aria-labelledby="sector-title" hidden>
+            <header class="screen-header">
+                <button id="btn-back-spot-type" class="btn-back" aria-label="Voltar à seleção de tipo">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 id="sector-title">Setor Preferido</h1>
+            </header>
+
+            <div class="screen-content">
+                <p class="screen-subtitle">Onde você prefere estacionar? <span class="optional-badge">(Opcional)</span></p>
+
+                <div id="sector-grid" class="sector-grid" role="radiogroup" aria-label="Setores disponíveis">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="availability-summary" id="availability-summary" aria-live="polite">
+                    <span class="stat"><span class="stat-value" id="stat-free">--</span> livres</span>
+                    <span class="stat"><span class="stat-value" id="stat-occupied">--</span> ocupadas</span>
+                    <span class="stat ev"><span class="stat-value" id="stat-ev">--</span> EV</span>
+                </div>
+
+                <div class="screen-actions">
+                    <button id="btn-sector-back" class="btn btn-secondary" type="button">Voltar</button>
+                    <button id="btn-sector-next" class="btn btn-primary" type="button">Gerar Ticket e Entrar</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tela 4: Ticket Gerado -->
+        <section id="screen-ticket" class="screen" aria-labelledby="ticket-title" hidden>
+            <header class="screen-header">
+                <h1 id="ticket-title">Seu Ticket</h1>
+            </header>
+
+            <div class="screen-content">
+                <div class="ticket-card" role="region" aria-label="Ticket de estacionamento" id="ticket-card">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="ticket-actions">
+                    <button id="btn-ticket-map" class="btn btn-secondary" type="button">
+                        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Ver no Mapa
+                    </button>
+                    <button id="btn-ticket-save" class="btn btn-primary" type="button">
+                        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Salvar Ticket
+                    </button>
+                </div>
+
+                <div class="ticket-info">
+                    <p><strong>Guarde este código:</strong> <span id="ticket-code-display" class="ticket-code"></span></p>
+                    <p class="hint">Apresente na saída ou consulte pelo código acima</p>
+                </div>
+
+                <div class="screen-actions">
+                    <button id="btn-ticket-new" class="btn btn-primary" type="button">Nova Entrada</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tela 5: Mapa Interativo -->
+        <section id="screen-map" class="screen" aria-labelledby="map-title" hidden>
+            <header class="screen-header">
+                <button id="btn-back-ticket" class="btn-back" aria-label="Voltar ao ticket">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 id="map-title">Mapa do Estacionamento</h1>
+            </header>
+
+            <div class="screen-content map-content">
+                <div class="map-controls" role="group" aria-label="Controles do mapa">
+                    <div class="floor-selector">
+                        <label for="floor-select" class="sr-only">Selecione o pavimento</label>
+                        <select id="floor-select" aria-label="Pavimento">
+                            <option value="subsolo1">Subsolo 1</option>
+                            <option value="subsolo2">Subsolo 2</option>
+                        </select>
+                    </div>
+                    <div class="map-legend" id="map-legend" aria-label="Legenda do mapa">
+                        <!-- Rendered by JS -->
+                    </div>
+                </div>
+
+                <div class="map-container" role="application" aria-label="Mapa interativo do estacionamento">
+                    <svg id="parking-map" class="parking-map" viewBox="0 0 1000 700" aria-hidden="true">
+                        <!-- Map rendered by JS -->
+                    </svg>
+                    <div id="map-overlay" class="map-overlay" aria-live="polite"></div>
+                </div>
+
+                <div class="map-info" id="map-info" aria-live="polite">
+                    <p>Selecione um setor ou vaga para ver detalhes</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tela 6: Consultar Ticket -->
+        <section id="screen-lookup" class="screen" aria-labelledby="lookup-title" hidden>
+            <header class="screen-header">
+                <button id="btn-back-welcome2" class="btn-back" aria-label="Voltar à tela inicial">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 id="lookup-title">Consultar Ticket</h1>
+            </header>
+
+            <div class="screen-content">
+                <p class="screen-subtitle">Digite o código do seu ticket para localizar seu veículo</p>
+
+                <form id="lookup-form" class="lookup-form">
+                    <div class="form-group">
+                        <label for="ticket-code-input" class="sr-only">Código do ticket</label>
+                        <input type="text" id="ticket-code-input" class="form-input ticket-code-input" placeholder="Ex: A1B2C3D4" maxlength="8" pattern="[A-Z0-9]{8}" aria-describedby="code-hint" autocomplete="off" required>
+                        <div id="code-hint" class="form-hint">Código de 8 caracteres (letras e números)</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-full">Buscar</button>
+                </form>
+
+                <div id="lookup-result" class="lookup-result hidden" aria-live="polite">
+                    <!-- Rendered by JS -->
+                </div>
+
+                <div class="screen-actions">
+                    <button id="btn-lookback-new" class="btn btn-secondary" type="button">Nova Entrada</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tela 7: Painel Administrativo -->
+        <section id="screen-admin" class="screen" aria-labelledby="admin-title" hidden>
+            <header class="screen-header">
+                <button id="btn-back-welcome3" class="btn-back" aria-label="Voltar à tela inicial">
+                    <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                </button>
+                <h1 id="admin-title">Painel Administrativo</h1>
+                <span class="admin-badge">Área Restrita</span>
+            </header>
+
+            <div class="screen-content admin-content">
+                <div class="admin-tabs" role="tablist" aria-label="Abas do painel administrativo">
+                    <button role="tab" id="tab-occupancy" aria-selected="true" aria-controls="panel-occupancy" class="tab-btn active">Ocupação</button>
+                    <button role="tab" id="tab-tickets" aria-selected="false" aria-controls="panel-tickets" class="tab-btn">Tickets</button>
+                    <button role="tab" id="tab-chargers" aria-selected="false" aria-controls="panel-chargers" class="tab-btn">Carregadores</button>
+                    <button role="tab" id="tab-simulation" aria-selected="false" aria-controls="panel-simulation" class="tab-btn">Simulação</button>
+                </div>
+
+                <div role="tabpanel" id="panel-occupancy" aria-labelledby="tab-occupancy" class="tab-panel active">
+                    <div class="metrics-grid" id="occupancy-metrics">
+                        <!-- Rendered by JS -->
+                    </div>
+                    <div class="chart-container">
+                        <h3>Ocupação por Setor</h3>
+                        <div id="occupancy-chart" class="chart" role="img" aria-label="Gráfico de ocupação por setor"></div>
+                    </div>
+                </div>
+
+                <div role="tabpanel" id="panel-tickets" aria-labelledby="tab-tickets" class="tab-panel" hidden>
+                    <div class="metrics-grid" id="tickets-metrics">
+                        <!-- Rendered by JS -->
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="tickets-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Código</th>
+                                    <th scope="col">Vaga</th>
+                                    <th scope="col">Setor</th>
+                                    <th scope="col">Entrada</th>
+                                    <th scope="col">Status</th>
+                                    <th scope="col">Valor</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tickets-tbody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div role="tabpanel" id="panel-chargers" aria-labelledby="tab-chargers" class="tab-panel" hidden>
+                    <div class="metrics-grid" id="chargers-metrics">
+                        <!-- Rendered by JS -->
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="chargers-table">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Vaga</th>
+                                    <th scope="col">Setor</th>
+                                    <th scope="col">Conector</th>
+                                    <th scope="col">Potência</th>
+                                    <th scope="col">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="chargers-tbody">
+                                <!-- Rendered by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div role="tabpanel" id="panel-simulation" aria-labelledby="tab-simulation" class="tab-panel" hidden>
+                    <h3>Simular Movimentação</h3>
+                    <div class="simulation-controls">
+                        <div class="form-group">
+                            <label for="sim-type">Tipo de Vaga</label>
+                            <select id="sim-type" class="form-select">
+                                <option value="comum">Comum</option>
+                                <option value="idoso">Idoso</option>
+                                <option value="pcd">PCD</option>
+                                <option value="neurodivergente">Neurodivergente</option>
+                                <option value="eletrico">Elétrico</option>
+                                <option value="moto">Moto</option>
+                                <option value="gestante">Gestante</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="sim-sector">Setor</label>
+                            <select id="sim-sector" class="form-select">
+                                <option value="">Qualquer</option>
+                            </select>
+                        </div>
+                        <div class="sim-buttons">
+                            <button id="btn-sim-entry" class="btn btn-primary" type="button">Simular Entrada</button>
+                            <button id="btn-sim-exit" class="btn btn-secondary" type="button">Simular Saída (aleatória)</button>
+                            <button id="btn-sim-reset" class="btn btn-danger" type="button">Resetar Estacionamento</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container" aria-live="polite" aria-label="Notificações"></div>
+
+    <!-- Admin Access (hidden trigger) -->
+    <button id="btn-admin-access" class="admin-trigger" aria-label="Acessar painel administrativo" title="Admin: toque 3 vezes">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </button>
+
+    <script src="app.js"></script>
+</body>
+</html>

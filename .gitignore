@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Banco SQLite (recriado + seed automático no startup)
+data/*.db
+data/*.db-journal
+
+# Ferramentas locais
+.omc/
+.remember/
+.vscode/
+.idea/
+
+# Postman / Newman
+newman/
+node_modules/
+
+# SO
+Thumbs.db
+.DS_Store
