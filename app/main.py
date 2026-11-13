@@ -5,7 +5,6 @@ Hackarun 2026 | Equipe 43 - Aerodactyle
 """
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
-from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -74,14 +73,7 @@ app = FastAPI(
     openapi_url="/openapi.json",
 )
 
-# CORS configuration for frontend integration
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict to specific origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Sem CORS: o frontend é servido pela própria API (mesma origem, DT5).
 
 
 # Exception handlers
@@ -158,4 +150,4 @@ if FRONTEND_DIR.is_dir():
 # Run directly with: python -m app.main
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=8000, reload=True)
