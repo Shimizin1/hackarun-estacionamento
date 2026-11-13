@@ -41,6 +41,8 @@ class Cobranca:
     isento: bool
 
 
+MAX_TENTATIVAS_VAGA = 5
+
 _US_MINUTO = 60 * 1_000_000
 _US_HORA = 3600 * 1_000_000
 
@@ -95,17 +97,27 @@ class TicketService:
         valor_hora = ConfigService.get_float(db, "valor_hora", 5.0)
 
         try:
-            vaga = cls._encontrar_vaga(db, request.tipo_vaga, request.setor_id, request.vaga_id)
+            # Reserva condicional (UPDATE ... WHERE status = LIVRE), sem commit.
+            # Se uma entrada concorrente levou a vaga escolhida, tenta outra
+            # (excluindo as já disputadas) em vez de falhar com vagas livres.
+            vaga = None
+            disputadas: set = set()
+            for _ in range(MAX_TENTATIVAS_VAGA):
+                candidata = cls._encontrar_vaga(
+                    db, request.tipo_vaga, request.setor_id, request.vaga_id,
+                    excluir=disputadas,
+                )
+                if not candidata:
+                    break
+                vaga = VagaService.ocupar_vaga(db, candidata.id, commit=False)
+                if vaga:
+                    break
+                if request.vaga_id:
+                    raise VagaIndisponivel("A vaga escolhida não está mais disponível")
+                disputadas.add(candidata.id)
 
             if not vaga:
                 raise ValueError(f"Nenhuma vaga {request.tipo_vaga.value} disponível")
-
-            # Reserva condicional (UPDATE ... WHERE status = LIVRE), sem commit
-            vaga = VagaService.ocupar_vaga(db, vaga.id, commit=False)
-            if not vaga:
-                if request.vaga_id:
-                    raise VagaIndisponivel("A vaga escolhida não está mais disponível")
-                raise ValueError("Falha ao ocupar a vaga")
 
             entrada = datetime.utcnow()
             tempo_limite = entrada + timedelta(minutes=tolerancia)
@@ -249,6 +261,7 @@ class TicketService:
         tipo_vaga: TipoVaga,
         setor_id: Optional[int],
         vaga_id: Optional[int] = None,
+        excluir: Optional[set] = None,
     ) -> Optional[Vaga]:
         """
         Escolhe a vaga da entrada (DT10):
@@ -265,6 +278,8 @@ class TicketService:
                 q = q.join(Carregador, Carregador.vaga_id == Vaga.id).filter(
                     Carregador.status == StatusCarregador.DISPONIVEL
                 )
+            if excluir:
+                q = q.filter(Vaga.id.notin_(excluir))
             return q.order_by(Vaga.id)
 
         if vaga_id:
@@ -279,7 +294,8 @@ class TicketService:
             vaga = livres_do_tipo().filter(Vaga.setor_id == setor_id).first()
             if vaga:
                 return vaga
-            sugestao = VagaService.sugerir_vaga_proxima(db, setor_id, tipo_vaga)
+            sugestao = VagaService.sugerir_vaga_proxima(
+                db, setor_id, tipo_vaga, list(excluir) if excluir else None)
             if sugestao:
                 return db.get(Vaga, sugestao.vaga.id)
             return None

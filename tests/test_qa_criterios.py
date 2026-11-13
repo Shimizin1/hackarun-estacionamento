@@ -153,15 +153,15 @@ def test_esgotar_todas_as_motos_e_depois_400_legivel(client):
 
 
 def test_entradas_concorrentes_nunca_dao_a_mesma_vaga(client):
-    """10 entradas simultaneas de moto (10 vagas): ids distintos e nenhum 500."""
+    """10 entradas simultaneas de moto (10 vagas livres): 10x201 e ids distintos (R1)."""
     def entrar(_):
         return client.post("/tickets/entrada", json={"tipo_vaga": "moto"})
     with ThreadPoolExecutor(max_workers=10) as ex:
         resps = list(ex.map(entrar, range(10)))
     codigos = [r.status_code for r in resps]
-    assert all(c in (201, 400, 409) for c in codigos), codigos
+    assert codigos == [201] * 10, codigos
     vagas = [r.json()["vaga"]["id"] for r in resps if r.status_code == 201]
-    assert len(vagas) == len(set(vagas))
+    assert len(vagas) == len(set(vagas)) == 10
 
 
 # ---- H04: contadores atualizam e batem entre endpoints ------------------------
