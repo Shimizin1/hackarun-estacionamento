@@ -3,7 +3,7 @@
 Todas as mudanças relevantes deste projeto são documentadas aqui.
 O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e o projeto adota [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
-## [2.0.0] - 2026-11-13 (Unreleased até o fim do hackathon)
+## [2.0.0] - 2026-11-13
 
 ### Corrigido
 - `POST /tickets/entrada` retornava 500 por `VagaResponse` não importado (D1).
@@ -43,6 +43,12 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Seed determinístico (`random.Random(43)`) e tickets de exemplo ativos apenas em vagas comuns.
 - `ocupar_vaga`/`liberar_vaga` fazem `UPDATE` condicional e aceitam `commit=False`.
 - Versão da API: 2.0.0.
+
+### Infraestrutura
+- CI no GitHub Actions (`.github/workflows/ci.yml`): pytest, Postman/Newman com relatório como artefato e build Docker com smoke test.
+- `Dockerfile` (python:3.13-slim, usuário não-root, porta 8000), `.dockerignore` e `docker-compose.yml` com volume para `data/` (RNF08).
+- `scripts/run_newman.py` aceita `NEWMAN_JSON` para exportar o relatório JSON.
+- Badge de CI e seções Docker e CI no README.
 
 ### Frontend
 - Tela única acessível servida em `/`: blocos Entrada, Ticket e Saída, sem mapa nem painel admin (F1).
