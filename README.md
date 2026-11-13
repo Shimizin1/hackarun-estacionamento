@@ -1,5 +1,7 @@
 # CapimParking - Estacionamento Inteligente
 
+[![CI](https://github.com/Shimizin1/hackarun-estacionamento/actions/workflows/ci.yml/badge.svg)](https://github.com/Shimizin1/hackarun-estacionamento/actions/workflows/ci.yml)
+
 Hackarun 2026 | **Equipe 43 - Aerodactyle** | versão 2.0.0
 
 Guilherme Abreu, Álvaro Franco, Flávio Antônio, Matheus Dassoler.
@@ -96,6 +98,25 @@ npx -y newman run postman/hackarun-estacionamento.postman_collection.json -e pos
 ```
 
 O Newman não é dependência do projeto (usa `npx`).
+
+## Docker
+
+Requer Docker. A imagem usa `python:3.13-slim`, roda como usuário não-root e escuta em `0.0.0.0:8000` dentro do container.
+
+```bash
+# com compose (banco persiste no volume "capim-data")
+docker compose up --build
+
+# ou direto
+docker build -t capimparking .
+docker run --rm -p 8000:8000 capimparking
+```
+
+Abra `http://localhost:8000/`. Para zerar o banco do compose: `docker compose down -v`. Para usar uma pasta local no lugar do volume: `-v ./data:/srv/data` (a pasta precisa aceitar escrita pelo uid 1000).
+
+## CI
+
+O workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) roda em push e pull request na `main`: `pytest` (Python 3.13), coleção Postman via `python scripts/run_newman.py` (relatório JSON publicado como artefato `newman-report`) e `docker build` com smoke test de `/health` e `/`.
 
 ## Documentação do squad
 
