@@ -18,6 +18,9 @@ from app.schemas import (
 from app.services.config_service import ConfigService
 
 
+CENTRO_SETOR = (50.0, 50.0)
+
+
 class VagaService:
     """Service for managing parking spots and availability."""
 
@@ -94,7 +97,7 @@ class VagaService:
         db: Session,
         setor_desejado_id: int,
         tipo_vaga: TipoVaga,
-        excluir_vaga_id: Optional[int] = None
+        excluir_vaga_ids: Optional[List[int]] = None
     ) -> Optional[VagaSugeridaResponse]:
         """
         Find the closest available spot of the requested type.
@@ -116,8 +119,14 @@ class VagaService:
             )
         )
 
-        if excluir_vaga_id:
-            query = query.filter(Vaga.id != excluir_vaga_id)
+        if excluir_vaga_ids:
+            query = query.filter(Vaga.id.notin_(excluir_vaga_ids))
+
+        if tipo_vaga == TipoVaga.ELETRICO:
+            # só vagas cujo carregador está disponível (não em uso/manutenção)
+            query = query.join(Carregador, Carregador.vaga_id == Vaga.id).filter(
+                Carregador.status == StatusCarregador.DISPONIVEL
+            )
 
         vagas_candidatas = query.all()
 
@@ -137,7 +146,7 @@ class VagaService:
             # and vaga's coordinates for candidate
             dist = cls._calcular_distancia_setores(
                 setor_desejado, vaga.setor,
-                (50.0, 50.0),  # center of desired sector
+                CENTRO_SETOR,  # centro do setor desejado
                 (vaga.coordenada_x, vaga.coordenada_y)
             )
 
@@ -173,22 +182,24 @@ class VagaService:
         If different sector same floor: add sector-to-sector base distance.
         If different floor: add floor transition penalty.
         """
-        x1, y1 = coord_origem
         x2, y2 = coord_destino
 
-        # Base Euclidean distance within coordinate system (0-100 scale)
-        dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        if setor_origem.id == setor_destino.id:
+            x1, y1 = coord_origem
+            return math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
 
-        # If different sectors, add inter-sector distance
-        if setor_origem.id != setor_destino.id:
-            # Base distance between sector centers (arbitrary units)
-            dist += 30.0  # ~30 units between sector centers
-
-            # If different floors, add floor transition penalty
-            if setor_origem.andar != setor_destino.andar:
-                dist += 50.0  # ~50 units for ramp/elevator
-
+        # Setores diferentes: distância da vaga até o centro do PRÓPRIO setor
+        # + 30 por bloco de diferença (A, B, C) + 50 se for outro andar (DT8).
+        dist = math.sqrt((x2 - CENTRO_SETOR[0]) ** 2 + (y2 - CENTRO_SETOR[1]) ** 2)
+        dist += 30.0 * abs(cls._indice_bloco(setor_origem) - cls._indice_bloco(setor_destino))
+        if setor_origem.andar != setor_destino.andar:
+            dist += 50.0  # rampa/elevador
         return dist
+
+    @staticmethod
+    def _indice_bloco(setor: Setor) -> int:
+        bloco = (setor.bloco or "A").strip().upper()
+        return ord(bloco[0]) - ord("A") if bloco else 0
 
     @classmethod
     def _gerar_motivo(
@@ -227,11 +238,25 @@ class VagaService:
         )
         if resultado.rowcount != 1:
             return None
+        # EV: o carregador acompanha a vaga (DISPONIVEL <-> EM_USO); manutenção não muda
+        c_de, c_para = (
+            (StatusCarregador.DISPONIVEL, StatusCarregador.EM_USO)
+            if para == StatusVaga.OCUPADA
+            else (StatusCarregador.EM_USO, StatusCarregador.DISPONIVEL)
+        )
+        db.execute(
+            update(Carregador)
+            .where(Carregador.vaga_id == vaga_id, Carregador.status == c_de)
+            .values(status=c_para, updated_at=datetime.utcnow())
+        )
         if commit:
             db.commit()
         else:
             db.flush()
-        return db.query(Vaga).filter(Vaga.id == vaga_id).populate_existing().first()
+        return (
+            db.query(Vaga).options(joinedload(Vaga.setor), joinedload(Vaga.carregador))
+            .filter(Vaga.id == vaga_id).populate_existing().first()
+        )
 
     @classmethod
     def ocupar_vaga(cls, db: Session, vaga_id: int, commit: bool = True) -> Optional[Vaga]:

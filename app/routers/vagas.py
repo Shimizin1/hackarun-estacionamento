@@ -44,7 +44,7 @@ def listar_vagas_disponiveis(
 def sugerir_vaga_proxima(
     setor_desejado_id: int = Query(..., gt=0, description="ID do setor desejado"),
     tipo_vaga: TipoVaga = Query(..., description="Tipo de vaga necessário"),
-    excluir_vaga_id: Optional[int] = Query(None, gt=0, description="Excluir vaga específica"),
+    excluir_vaga_id: Optional[List[int]] = Query(None, description="Vagas a excluir (repita o parâmetro)"),
     db: Session = Depends(get_db),
 ):
     """
@@ -52,7 +52,7 @@ def sugerir_vaga_proxima(
     Usa algoritmo de proximidade baseado em coordenadas virtuais.
     """
     sugestao = VagaService.sugerir_vaga_proxima(
-        db, setor_desejado_id, tipo_vaga, excluir_vaga_id
+        db, setor_desejado_id, tipo_vaga, excluir_vaga_id or None
     )
     if not sugestao:
         raise HTTPException(

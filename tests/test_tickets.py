@@ -141,3 +141,41 @@ def test_tolerancia_zero_cobra_pelo_menos_uma_hora(client):
     t = _entrada(client)
     s = client.post(f"/tickets/{t['identificador']}/saida").json()
     assert s["valor"] == 5.0 and s["status_pagamento"] == "pendente"
+
+
+# ---- A13: carregador EV ------------------------------------------------------
+
+def test_carregador_muda_de_status_com_a_vaga(client, db):
+    from app.models import Carregador, StatusCarregador
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "eletrico"})
+    corpo = r.json()
+    assert corpo["vaga"]["carregador"]["status"] == "em_uso"
+    vaga_id = corpo["vaga"]["id"]
+    db.expire_all()
+    assert db.query(Carregador).filter_by(vaga_id=vaga_id).one().status == StatusCarregador.EM_USO
+    client.post(f"/tickets/{corpo['identificador']}/saida")
+    db.expire_all()
+    assert db.query(Carregador).filter_by(vaga_id=vaga_id).one().status == StatusCarregador.DISPONIVEL
+
+
+def test_carregador_em_manutencao_nao_e_oferecido(client, db):
+    from app.models import Carregador, StatusCarregador
+    db.query(Carregador).update({Carregador.status: StatusCarregador.MANUTENCAO})
+    db.commit()
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "eletrico"})
+    assert r.status_code == 400
+
+
+# ---- A14: placa ---------------------------------------------------------------
+
+@pytest.mark.parametrize("entrada", ["abc-1d23", "ABC 1D23", " abc1d23 "])
+def test_placa_normalizada(client, entrada):
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "comum", "placa": entrada})
+    assert r.status_code == 201, r.text
+    t = client.get(f"/tickets/{r.json()['identificador']}").json()
+    assert t["placa"] == "ABC1D23"
+
+
+def test_placa_invalida_422(client):
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "comum", "placa": "abc#123"})
+    assert r.status_code == 422

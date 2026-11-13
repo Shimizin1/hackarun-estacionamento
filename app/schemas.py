@@ -1,6 +1,7 @@
 """
 Pydantic schemas for request/response validation.
 """
+import re
 from datetime import datetime
 from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, ConfigDict, field_validator
@@ -40,6 +41,18 @@ class SetorResponse(SetorBase):
     vagas_manutencao: int = 0
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SetorResumo(BaseModel):
+    """Setor com contagens de ocupação (GET /setores)."""
+    id: int
+    nome: str
+    cor: str
+    andar: str
+    bloco: Optional[str] = None
+    capacidade_total: int
+    vagas_livres: int
+    vagas_ocupadas: int
 
 
 # ==================== Vaga Schemas ====================
@@ -115,13 +128,16 @@ class TicketEntradaRequest(BaseModel):
     """Request para registrar entrada de veículo."""
     tipo_vaga: TipoVaga = Field(..., description="Tipo de vaga desejada")
     setor_id: Optional[int] = Field(None, gt=0, description="Setor preferido (opcional)")
+    vaga_id: Optional[int] = Field(None, gt=0, description="Vaga específica (ex.: sugestão aceita); 409 se não estiver livre")
     placa: Optional[str] = Field(None, max_length=10, pattern=r"^[A-Z0-9]{1,10}$", description="Placa do veículo (opcional)")
 
-    @field_validator("placa")
+    @field_validator("placa", mode="before")
     @classmethod
     def normalize_placa(cls, v):
-        if v:
-            return v.upper().strip()
+        """Remove espaços/hífens e converte para maiúsculas ANTES do pattern."""
+        if isinstance(v, str):
+            v = re.sub(r"[\s-]", "", v).upper()
+            return v or None
         return v
 
 

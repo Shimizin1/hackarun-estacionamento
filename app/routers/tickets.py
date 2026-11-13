@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.services.ticket_service import (
-    TicketService, TicketNaoEncontrado, TicketJaFinalizado,
+    TicketService, TicketNaoEncontrado, TicketJaFinalizado, VagaIndisponivel,
 )
 from app.schemas import (
     TicketEntradaRequest, TicketEntradaResponse,
@@ -28,6 +28,8 @@ def registrar_entrada(request: TicketEntradaRequest, db: Session = Depends(get_d
     """
     try:
         return TicketService.registrar_entrada(db, request)
+    except VagaIndisponivel as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 

@@ -51,3 +51,67 @@ def test_frontend_servido_na_raiz_e_info(client):
     assert "Equipe 43" in client.get("/api/info").json()["team"]
     assert client.get("/health").json()["database"] == "connected"
     assert client.get("/docs").status_code == 200
+
+
+# ---- A11: proximidade, exclusão repetível, vaga_id --------------------------
+
+def proxima(client, setor=3, tipo="pcd", excluir=()):
+    params = [("setor_desejado_id", setor), ("tipo_vaga", tipo)]
+    params += [("excluir_vaga_id", i) for i in excluir]
+    return client.get("/vagas/proximas", params=params)
+
+
+def test_amarelo_pcd_sugere_verde(client):
+    r = proxima(client)
+    assert r.status_code == 200
+    corpo = r.json()
+    assert corpo["vaga"]["setor"]["nome"] == "Verde"
+    assert corpo["mesmo_andar"] is True
+    assert corpo["distancia_metros"] > 0
+
+
+def test_recusas_seguidas_devolvem_vagas_distintas_e_depois_404(client):
+    total_pcd = client.get("/vagas/disponiveis", params={"tipo": "pcd"}).json()["total"]
+    vistas = []
+    for _ in range(total_pcd):
+        r = proxima(client, excluir=vistas)
+        assert r.status_code == 200
+        vistas.append(r.json()["vaga"]["id"])
+    assert len(set(vistas)) == total_pcd
+    assert proxima(client, excluir=vistas).status_code == 404
+
+
+def test_entrada_com_vaga_id_ocupa_exatamente_essa_vaga(client):
+    sugerida = proxima(client).json()["vaga"]
+    r = client.post("/tickets/entrada", json={
+        "tipo_vaga": "pcd", "setor_id": 3, "vaga_id": sugerida["id"]})
+    assert r.status_code == 201
+    assert r.json()["vaga"]["id"] == sugerida["id"]
+
+
+def test_vaga_id_ocupada_ou_de_outro_tipo_409(client):
+    sugerida = proxima(client).json()["vaga"]
+    corpo = {"tipo_vaga": "pcd", "vaga_id": sugerida["id"]}
+    assert client.post("/tickets/entrada", json=corpo).status_code == 201
+    assert client.post("/tickets/entrada", json=corpo).status_code == 409
+    comum = client.get("/vagas/disponiveis", params={"tipo": "comum"}).json()["vagas"][0]
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "pcd", "vaga_id": comum["id"]})
+    assert r.status_code == 409
+
+
+def test_entrada_setor_cheio_usa_proximidade(client):
+    r = client.post("/tickets/entrada", json={"tipo_vaga": "pcd", "setor_id": 3})
+    assert r.status_code == 201
+    assert r.json()["vaga"]["setor"]["nome"] == "Verde"
+
+
+# ---- A12: /setores ------------------------------------------------------------
+
+def test_setores_lista_seis_com_contagens(client):
+    r = client.get("/setores")
+    assert r.status_code == 200
+    setores = r.json()
+    assert [s["nome"] for s in setores] == ["Azul", "Verde", "Amarelo", "Vermelho", "Roxo", "Laranja"]
+    assert sum(s["capacidade_total"] for s in setores) == 356
+    for s in setores:
+        assert s["vagas_livres"] + s["vagas_ocupadas"] == s["capacidade_total"]

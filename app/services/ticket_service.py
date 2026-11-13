@@ -9,8 +9,8 @@ from typing import Optional, List
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_
 from app.models import (
-    Ticket, Vaga, Setor, Configuracao,
-    TipoVaga, StatusVaga, StatusPagamento
+    Ticket, Vaga, Setor, Configuracao, Carregador,
+    TipoVaga, StatusVaga, StatusPagamento, StatusCarregador
 )
 from app.schemas import (
     TicketEntradaRequest, TicketEntradaResponse,
@@ -23,6 +23,10 @@ from app.services.config_service import ConfigService
 
 class TicketNaoEncontrado(LookupError):
     """Nenhum ticket com o identificador informado."""
+
+
+class VagaIndisponivel(Exception):
+    """A vaga pedida (vaga_id) não está livre ou não é do tipo solicitado."""
 
 
 class TicketJaFinalizado(Exception):
@@ -91,7 +95,7 @@ class TicketService:
         valor_hora = ConfigService.get_float(db, "valor_hora", 5.0)
 
         try:
-            vaga = cls._encontrar_vaga(db, request.tipo_vaga, request.setor_id)
+            vaga = cls._encontrar_vaga(db, request.tipo_vaga, request.setor_id, request.vaga_id)
 
             if not vaga:
                 raise ValueError(f"Nenhuma vaga {request.tipo_vaga.value} disponível")
@@ -99,6 +103,8 @@ class TicketService:
             # Reserva condicional (UPDATE ... WHERE status = LIVRE), sem commit
             vaga = VagaService.ocupar_vaga(db, vaga.id, commit=False)
             if not vaga:
+                if request.vaga_id:
+                    raise VagaIndisponivel("A vaga escolhida não está mais disponível")
                 raise ValueError("Falha ao ocupar a vaga")
 
             entrada = datetime.utcnow()
@@ -241,24 +247,44 @@ class TicketService:
         cls,
         db: Session,
         tipo_vaga: TipoVaga,
-        setor_id: Optional[int]
+        setor_id: Optional[int],
+        vaga_id: Optional[int] = None,
     ) -> Optional[Vaga]:
-        """Find an available spot, preferring the requested sector."""
-        query = db.query(Vaga).filter(
-            and_(
-                Vaga.tipo == tipo_vaga,
-                Vaga.status == StatusVaga.LIVRE
+        """
+        Escolhe a vaga da entrada (DT10):
+        - `vaga_id`: exatamente essa vaga, que precisa estar livre e ser do tipo (senão 409);
+        - `setor_id`: primeira livre do tipo no setor; setor cheio -> mais próxima (proximidade);
+        - sem setor: primeira livre do tipo.
+        Vaga elétrica só com carregador DISPONIVEL (A13).
+        """
+        def livres_do_tipo():
+            q = db.query(Vaga).filter(
+                and_(Vaga.tipo == tipo_vaga, Vaga.status == StatusVaga.LIVRE)
             )
-        )
+            if tipo_vaga == TipoVaga.ELETRICO:
+                q = q.join(Carregador, Carregador.vaga_id == Vaga.id).filter(
+                    Carregador.status == StatusCarregador.DISPONIVEL
+                )
+            return q.order_by(Vaga.id)
+
+        if vaga_id:
+            vaga = livres_do_tipo().filter(Vaga.id == vaga_id).first()
+            if not vaga:
+                raise VagaIndisponivel(
+                    "A vaga escolhida não está livre ou não é do tipo solicitado"
+                )
+            return vaga
 
         if setor_id:
-            # First try preferred sector
-            vaga = query.filter(Vaga.setor_id == setor_id).first()
+            vaga = livres_do_tipo().filter(Vaga.setor_id == setor_id).first()
             if vaga:
                 return vaga
+            sugestao = VagaService.sugerir_vaga_proxima(db, setor_id, tipo_vaga)
+            if sugestao:
+                return db.get(Vaga, sugestao.vaga.id)
+            return None
 
-        # Fallback: any sector
-        return query.first()
+        return livres_do_tipo().first()
 
     @classmethod
     def _gerar_identificador(cls) -> str:
