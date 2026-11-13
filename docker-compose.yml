@@ -1,0 +1,12 @@
+services:
+  api:
+    build: .
+    image: capimparking:2.0.0
+    ports:
+      - "8000:8000"
+    volumes:
+      - capim-data:/srv/data
+    restart: unless-stopped
+
+volumes:
+  capim-data:
