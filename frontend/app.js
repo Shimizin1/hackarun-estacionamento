@@ -11,6 +11,7 @@
  *   6. Ticket emitido                                    [F3]
  *   7. Saída                                             [F3]
  *   8. Acessibilidade (contraste, fonte, voz)            [F5]
+ *   9. Setor cheio: sugerir, aceitar, outra opção        [F6]
  */
 (function () {
     'use strict';
@@ -38,6 +39,7 @@
     ];
     const POLL_MS = 30000;
     const POUCAS_VAGAS = 5;
+    const MAX_RECUSAS = 3;
     const FUSO = 'America/Araguaina'; // UTC-3, horário de Palmas
 
     const MSG = {
@@ -59,6 +61,7 @@
         ocupado: false
     };
     let ultimoTicket = null;
+    let sugestao = null; // {tipo, setorId, excluidas[], recusas, atual}
 
     const el = {
         form: $('form-entrada'),
@@ -93,6 +96,11 @@
 
     function plural(n, um, varios) {
         return n === 1 ? um : varios;
+    }
+
+    // PCD é sigla e mantém caixa alta; os demais vão em minúsculas no meio da frase.
+    function tipoTexto(tipo) {
+        return tipo === 'pcd' ? 'PCD' : ROTULO_TIPO[tipo].toLowerCase();
     }
 
     function tipoSelecionado() {
@@ -250,7 +258,7 @@
         box.appendChild(corpo);
         container.appendChild(box);
         if (tipo === 'error' || tipo === 'warning') {
-            falarSeAtivo((opcoes.titulo || '') + ' ' + (opcoes.texto || ''));
+            falarSeAtivo(opcoes.fala || ((opcoes.titulo || '') + ' ' + (opcoes.texto || '')));
         }
         if (opcoes.foco !== false) {
             const alvo = box.querySelector('.alert-actions button') || box;
@@ -394,7 +402,7 @@
 
     function renderResumo() {
         const r = resumoAtual();
-        const sufixo = tipoSelecionado() ? ' ' + ROTULO_TIPO[tipoSelecionado()].toLowerCase() : '';
+        const sufixo = tipoSelecionado() ? ' ' + tipoTexto(tipoSelecionado()) : '';
         if (!r) {
             el.statFree.textContent = '--';
             el.statOcc.textContent = '--';
@@ -419,7 +427,7 @@
         const r = resumoAtual();
         if (!r) return '';
         const tipo = tipoSelecionado();
-        const quem = tipo ? ' para vagas ' + ROTULO_TIPO[tipo].toLowerCase() : '';
+        const quem = tipo ? ' para vagas ' + tipoTexto(tipo) : '';
         const setor = setorSelecionado() ? ', setor ' + nomeSetor(setorSelecionado()) : '';
         return r.livres + ' ' + plural(r.livres, 'vaga livre', 'vagas livres') + ' de ' + r.total + quem + setor + '.';
     }
@@ -520,7 +528,13 @@
         return err.detail || MSG.validacao;
     }
 
-    function tratarErroEntrada(err, tentarDeNovo) {
+    function tratarErroEntrada(err, tentarDeNovo, payload) {
+        if (err.status === 409 && payload && payload.vaga_id && sugestao) {
+            // A vaga aceita foi ocupada por outra pessoa: busca outra opção.
+            sugestao.excluidas.push(payload.vaga_id);
+            buscarSugestao('A vaga sugerida acabou de ser ocupada. Buscando outra opção...');
+            return;
+        }
         if (err.kind === 'rede' || err.kind === 'servidor') {
             mostrarAlerta(el.entradaStatus, {
                 tipo: 'error',
@@ -550,7 +564,7 @@
         } catch (err) {
             bloquearEntrada(false);
             setBusy(el.btnGerar, false);
-            tratarErroEntrada(err, () => emitirTicket(payload));
+            tratarErroEntrada(err, () => emitirTicket(payload), payload);
         } finally {
             carregarDisponibilidade({ silencioso: true });
         }
@@ -623,11 +637,11 @@
         tol.appendChild(criar('p', 'ticket-tolerance-time', 'Grátis até ' + formatarHora(t.tempo_limite_tolerancia)));
         el.ticketCard.appendChild(tol);
 
-        if (t.mensagem) el.ticketCard.appendChild(criar('p', 'ticket-message', t.mensagem));
     }
 
     function mostrarTicket(t) {
         ultimoTicket = t;
+        sugestao = null;
         renderTicket(t);
         try { window.sessionStorage.setItem(CHAVE_CODIGO, t.identificador); } catch (e) { /* sem storage */ }
         el.codigo.value = t.identificador;
@@ -645,6 +659,7 @@
         limpar(el.entradaStatus);
         limparErroTipo();
         ultimoTicket = null;
+        sugestao = null;
         document.querySelectorAll('input[name="tipo"]').forEach((r) => { r.checked = false; });
         el.setor.value = '';
         state.selTipo = null;
@@ -709,7 +724,6 @@
         card.appendChild(criar('p', 'ticket-message', r.isento
             ? 'Dentro da tolerância de ' + (state.config ? state.config.tolerancia_minutos : 15) + ' minutos.'
             : 'Pagamento simulado nesta demonstração.'));
-        if (r.mensagem) card.appendChild(criar('p', 'ticket-message', r.mensagem));
         el.saidaStatus.appendChild(card);
         titulo.focus();
         anunciar(descricaoSaida(r));
@@ -795,17 +809,26 @@
         const payload = { tipo_vaga: tipo };
         const setor = setorSelecionado();
         if (setor) payload.setor_id = setor;
+        // E5: setor escolhido sem vagas do tipo -> sugestão antes de chamar a entrada.
+        if (setor && livresNoSetor(setor) === 0) {
+            sugestao = { tipo: tipo, setorId: setor, excluidas: [], recusas: 0, atual: null };
+            buscarSugestao();
+            return;
+        }
+        sugestao = null;
         emitirTicket(payload);
     }
 
     function aoMudarTipo() {
         limparErroTipo();
+        sugestao = null;
         limpar(el.entradaStatus);
         renderTipos();
         carregarDisponibilidade({ anunciar: true });
     }
 
     function aoMudarSetor() {
+        sugestao = null;
         limpar(el.entradaStatus);
         renderResumo();
         anunciar(textoResumoAnuncio());
@@ -962,7 +985,7 @@
         });
     }
 
-    // Esc: fecha a sugestão/alerta de entrada e devolve o foco ao botão principal. [F5/F6]
+    // Esc: fecha a sugestão/alerta de entrada e devolve o foco ao botão principal.
     function aoEscape() {
         if (el.entradaStatus.contains(document.activeElement) && el.entradaStatus.firstChild) {
             cancelarSugestao();
@@ -970,9 +993,133 @@
         }
     }
 
-    // Preenchido na tarefa F6 (sugestão de setor cheio).
+    /* ======================================================================
+     * 9. Setor cheio: sugerir, aceitar, outra opção  [F6]
+     * ==================================================================== */
     function cancelarSugestao() {
+        sugestao = null;
         limpar(el.entradaStatus);
+    }
+
+    function escolherOutroTipo() {
+        cancelarSugestao();
+        const alvo = document.querySelector('input[name="tipo"]:checked') || document.querySelector('input[name="tipo"]');
+        if (alvo) alvo.focus();
+    }
+
+    function fraseSugestao(sug) {
+        const v = sug.vaga;
+        const setor = (v.setor && v.setor.nome) || nomeSetor(v.setor_id);
+        const andar = (v.setor && v.setor.andar) || '';
+        const dist = Math.round(sug.distancia_metros);
+        return 'Setor ' + setor + ', ' + andar + '. Vaga ' + v.numero + ', a cerca de ' + dist +
+            ' metros, ' + sug.tempo_caminhada_minutos + ' ' + plural(sug.tempo_caminhada_minutos, 'minuto', 'minutos') + ' a pé.';
+    }
+
+    function renderSugestao(sug) {
+        const v = sug.vaga;
+        const setor = (v.setor && v.setor.nome) || nomeSetor(v.setor_id);
+        const andar = (v.setor && v.setor.andar) || '';
+        const dl = criar('dl', 'suggestion-card');
+        dl.appendChild(campo('Setor', setor));
+        dl.appendChild(campo('Andar', andar || '-'));
+        dl.appendChild(campo('Vaga', v.numero));
+        dl.appendChild(campo('Distância', 'cerca de ' + Math.round(sug.distancia_metros) + ' metros'));
+        dl.appendChild(campo('A pé', sug.tempo_caminhada_minutos + ' ' + plural(sug.tempo_caminhada_minutos, 'minuto', 'minutos')));
+
+        const n = sugestao.recusas + 1;
+        const contagem = criar('p', 'suggestion-count', 'Opção ' + n + ' de ' + (MAX_RECUSAS + 1));
+        const wrap = criar('div');
+        wrap.appendChild(dl);
+        wrap.appendChild(contagem);
+
+        const tipoNome = tipoTexto(sugestao.tipo);
+        const cheio = nomeSetor(sugestao.setorId);
+        const acoes = [{ rotulo: 'Aceitar vaga', classe: 'btn-primary', onClick: aceitarSugestao }];
+        acoes.push({ rotulo: 'Outra opção', classe: 'btn-secondary', onClick: recusarSugestao });
+        acoes.push({ rotulo: 'Cancelar', classe: 'btn-secondary', onClick: () => {
+            cancelarSugestao();
+            el.btnGerar.focus();
+        } });
+        mostrarAlerta(el.entradaStatus, {
+            tipo: 'warning',
+            titulo: 'O setor ' + cheio + ' está cheio para vagas ' + tipoNome + '. Encontramos uma vaga perto de lá.',
+            extra: wrap,
+            acoes: acoes,
+            fala: 'O setor ' + cheio + ' está cheio para vagas ' + tipoNome + '. Sugestão: ' + fraseSugestao(sug)
+        });
+        anunciar('Sugestão: ' + fraseSugestao(sug));
+    }
+
+    async function buscarSugestao(aviso) {
+        if (!sugestao || state.ocupado) return;
+        state.ocupado = true;
+        el.btnGerar.setAttribute('aria-disabled', 'true');
+        mostrarAlerta(el.entradaStatus, {
+            tipo: 'info',
+            titulo: aviso || 'Procurando uma vaga próxima...',
+            foco: false
+        });
+        const atual = sugestao;
+        try {
+            const sug = await api('/vagas/proximas' + consulta({
+                setor_desejado_id: atual.setorId,
+                tipo_vaga: atual.tipo,
+                excluir_vaga_id: atual.excluidas
+            }));
+            state.ocupado = false;
+            el.btnGerar.removeAttribute('aria-disabled');
+            // Backend antigo ignora exclusões repetidas: se voltou uma vaga já recusada, não há mais opções.
+            if (!sug || !sug.vaga || atual.excluidas.indexOf(sug.vaga.id) !== -1) {
+                semMaisOpcoes();
+                return;
+            }
+            atual.atual = sug;
+            renderSugestao(sug);
+        } catch (err) {
+            state.ocupado = false;
+            el.btnGerar.removeAttribute('aria-disabled');
+            if (err.status === 404) {
+                semMaisOpcoes();
+            } else if (err.kind === 'rede' || err.kind === 'servidor') {
+                mostrarAlerta(el.entradaStatus, {
+                    tipo: 'error',
+                    titulo: 'Não foi possível conectar ao estacionamento.',
+                    texto: MSG.rede,
+                    acoes: [{ rotulo: 'Tentar de novo', classe: 'btn-primary', onClick: () => buscarSugestao() }]
+                });
+            } else {
+                mostrarAlerta(el.entradaStatus, { tipo: 'error', titulo: err.detail || MSG.validacao });
+            }
+        }
+    }
+
+    function semMaisOpcoes() {
+        sugestao = null;
+        mostrarAlerta(el.entradaStatus, {
+            tipo: 'error',
+            titulo: 'Não há mais vagas livres deste tipo.',
+            texto: 'Escolha outro tipo de vaga.',
+            acoes: [{ rotulo: 'Escolher outro tipo', classe: 'btn-primary', onClick: escolherOutroTipo }]
+        });
+    }
+
+    function aceitarSugestao() {
+        if (!sugestao || !sugestao.atual) return;
+        const v = sugestao.atual.vaga;
+        emitirTicket({ tipo_vaga: sugestao.tipo, setor_id: v.setor_id, vaga_id: v.id });
+    }
+
+    function recusarSugestao() {
+        if (!sugestao || !sugestao.atual) return;
+        sugestao.excluidas.push(sugestao.atual.vaga.id);
+        sugestao.recusas += 1;
+        sugestao.atual = null;
+        if (sugestao.recusas >= MAX_RECUSAS) {
+            semMaisOpcoes();
+            return;
+        }
+        buscarSugestao();
     }
 
     function iniciar() {

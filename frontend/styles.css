@@ -1910,8 +1910,12 @@ main {
     text-align: center;
 }
 
-.form-group .field-label {
+#form-saida .field-label {
     text-align: center;
+}
+
+.availability-summary .stat.ev .stat-value {
+    color: var(--color-primary-text); /* ouro sobre branco falha 3:1 */
 }
 
 /* Radios nativos escondidos visualmente (continuam focaveis e operaveis por setas) */
