@@ -2,6 +2,7 @@
 Database configuration and session management.
 SQLite with SQLAlchemy 2.0 async support.
 """
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from sqlalchemy import create_engine, event
@@ -13,7 +14,9 @@ from sqlalchemy.pool import StaticPool
 DB_DIR = Path(__file__).parent.parent / "data"
 DB_DIR.mkdir(exist_ok=True)
 DB_PATH = DB_DIR / "capimparking.db"
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+# Permite apontar para outro banco (testes, Postman/Newman) sem tocar em data/.
+DATABASE_URL = os.getenv("CAPIM_DB_URL", f"sqlite:///{DB_PATH}")
+_IN_MEMORY = DATABASE_URL in ("sqlite://", "sqlite:///:memory:")
 
 
 class Base(DeclarativeBase):
@@ -22,12 +25,12 @@ class Base(DeclarativeBase):
 
 
 # Engine configuration for SQLite
-engine = create_engine(
-    DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-    echo=False,  # Set to True for SQL debugging
-)
+# StaticPool (conexão única) só para banco em memória; arquivo usa o pool padrão.
+_engine_kwargs = {"connect_args": {"check_same_thread": False}, "echo": False}
+if _IN_MEMORY:
+    _engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 
 
 # Enable foreign keys for SQLite
