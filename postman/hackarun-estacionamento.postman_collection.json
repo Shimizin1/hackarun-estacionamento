@@ -1,0 +1,1216 @@
+{
+  "info": {
+    "name": "Hackarun - Estacionamento Inteligente",
+    "description": "Colecao da v2.0 (Equipe 43 - Aerodactyle). Pre-condicao: banco recem-criado (apague data/capimparking.db e suba a API) e execucao em SEQUENCIA no Collection Runner/Newman. Variaveis encadeadas: ticketId, ticketPlaca, ticketCobrado, vagaSugerida. Fora do escopo (Won't): POST /setores, GET /setores/{id}/vagas e cenarios de carga.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Setup & Health",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('database=connected', () => pm.expect(j.database).to.eql('connected'));",
+                  "pm.test('status healthy', () => pm.expect(j.status).to.eql('healthy'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /config",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/config",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "config"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('tolerancia_minutos = 15', () => pm.expect(j.tolerancia_minutos).to.eql(15));",
+                  "pm.test('valor_hora = 5.0', () => pm.expect(j.valor_hora).to.eql(5.0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Setores",
+      "item": [
+        {
+          "name": "GET /setores",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/setores",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "setores"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('6 setores', () => pm.expect(j).to.have.lengthOf(6));",
+                  "pm.test('capacidade total 356', () => pm.expect(j.reduce((a, s) => a + s.capacidade_total, 0)).to.eql(356));",
+                  "pm.test('livres + ocupadas = capacidade', () => j.forEach(s => pm.expect(s.vagas_livres + s.vagas_ocupadas).to.eql(s.capacidade_total)));",
+                  "pm.test('campos do contrato', () => pm.expect(j[0]).to.include.all.keys('id', 'nome', 'cor', 'andar', 'bloco', 'capacidade_total', 'vagas_livres', 'vagas_ocupadas'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Somente leitura. POST /setores e GET /setores/{id}/vagas (doc, secao 9) ficam fora do escopo da v2.0 (Won't do)."
+    },
+    {
+      "name": "03 - Vagas",
+      "item": [
+        {
+          "name": "GET /vagas/disponiveis?tipo=comum&setor_id=1",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/disponiveis?tipo=comum&setor_id=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "disponiveis"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "comum"
+                },
+                {
+                  "key": "setor_id",
+                  "value": "1"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('um setor (Azul) filtrado', () => { pm.expect(j.por_setor).to.have.lengthOf(1); pm.expect(j.por_setor[0].setor_nome).to.eql('Azul'); });",
+                  "pm.test('contadores coerentes', () => { const s = j.por_setor[0]; pm.expect(s.livres + s.ocupadas).to.eql(s.total); pm.expect(s.livres).to.eql(j.total); });",
+                  "pm.test('todas as vagas sao comuns', () => j.vagas.forEach(v => pm.expect(v.tipo).to.eql('comum')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/disponiveis?tipo=pcd (setor cheio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/disponiveis?tipo=pcd",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "disponiveis"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "pcd"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "const amarelo = j.por_setor.find(s => s.setor_nome === 'Amarelo');",
+                  "pm.test('Amarelo aparece com livres = 0', () => { pm.expect(amarelo).to.exist; pm.expect(amarelo.livres).to.eql(0); });",
+                  "pm.test('6 setores no retorno', () => pm.expect(j.por_setor).to.have.lengthOf(6));",
+                  "pm.test('ha vaga PCD livre', () => pm.expect(j.total).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/disponiveis?tipo=moto",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/disponiveis?tipo=moto",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "disponiveis"
+              ],
+              "query": [
+                {
+                  "key": "tipo",
+                  "value": "moto"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('10 vagas de moto', () => pm.expect(j.total).to.eql(10));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/proximas (Amarelo, pcd)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/proximas?setor_desejado_id=3&tipo_vaga=pcd",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "proximas"
+              ],
+              "query": [
+                {
+                  "key": "setor_desejado_id",
+                  "value": "3"
+                },
+                {
+                  "key": "tipo_vaga",
+                  "value": "pcd"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('distancia_metros no nivel raiz', () => pm.expect(j.distancia_metros).to.be.a('number'));",
+                  "pm.test('sugere o Verde (vizinho, mesmo andar)', () => { pm.expect(j.vaga.setor.nome).to.eql('Verde'); pm.expect(j.mesmo_andar).to.eql(true); });",
+                  "pm.test('vaga PCD', () => pm.expect(j.vaga.tipo).to.eql('pcd'));",
+                  "pm.collectionVariables.set('vagaSugerida', j.vaga.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/proximas (excluindo a sugerida)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/proximas?setor_desejado_id=3&tipo_vaga=pcd&excluir_vaga_id={{vagaSugerida}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "proximas"
+              ],
+              "query": [
+                {
+                  "key": "setor_desejado_id",
+                  "value": "3"
+                },
+                {
+                  "key": "tipo_vaga",
+                  "value": "pcd"
+                },
+                {
+                  "key": "excluir_vaga_id",
+                  "value": "{{vagaSugerida}}"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('outra vaga (id diferente)', () => pm.expect(String(j.vaga.id)).to.not.eql(String(pm.collectionVariables.get('vagaSugerida'))));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/{{vagaSugerida}}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/{{vagaSugerida}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "{{vagaSugerida}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('mesma vaga sugerida', () => pm.expect(String(j.id)).to.eql(String(pm.collectionVariables.get('vagaSugerida'))));",
+                  "pm.test('vaga livre', () => pm.expect(j.status).to.eql('livre'));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 - Tickets - Entrada",
+      "item": [
+        {
+          "name": "POST /tickets/entrada (comum, setor Azul)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"comum\",\n  \"setor_id\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('vaga no setor Azul (Subsolo 1)', () => { pm.expect(j.vaga.setor.nome).to.eql('Azul'); pm.expect(j.vaga.setor.andar).to.eql('Subsolo 1'); });",
+                  "pm.collectionVariables.set('ticketId', j.identificador);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (idoso, sem setor)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"idoso\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('vaga do tipo idoso', () => pm.expect(j.vaga.tipo).to.eql('idoso'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (eletrico)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"eletrico\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('vaga eletrica com carregador em uso', () => { pm.expect(j.vaga.tem_carregador).to.eql(true); pm.expect(j.vaga.carregador.status).to.eql('em_uso'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (moto)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"moto\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('moto no setor Laranja', () => { pm.expect(j.vaga.tipo).to.eql('moto'); pm.expect(j.vaga.setor.nome).to.eql('Laranja'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (pcd, Amarelo cheio, vaga_id aceita)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"pcd\",\n  \"setor_id\": 3,\n  \"vaga_id\": \"{{vagaSugerida}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Fluxo UC02: a vaga vem de GET /vagas/proximas (variavel vagaSugerida)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('ocupou exatamente a vaga sugerida', () => pm.expect(String(j.vaga.id)).to.eql(String(pm.collectionVariables.get('vagaSugerida'))));",
+                  "pm.test('fora do Amarelo (setor cheio)', () => pm.expect(j.vaga.setor.nome).to.not.eql('Amarelo'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (pcd, Amarelo cheio, sem vaga_id -> proximidade)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"pcd\",\n  \"setor_id\": 3\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.test('alocada fora do Amarelo', () => pm.expect(j.vaga.setor.nome).to.not.eql('Amarelo'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (placa normalizada)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"comum\",\n  \"setor_id\": 2,\n  \"placa\": \"abc-1d23\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tem identificador e vaga com andar', () => { pm.expect(j.identificador).to.be.a('string'); pm.expect(j.vaga.setor.andar).to.be.a('string'); });",
+                  "pm.test('tolerancia 15 e R$ 5,00/h', () => { pm.expect(j.tolerancia_minutos).to.eql(15); pm.expect(j.valor_hora).to.eql(5.0); });",
+                  "pm.test('vaga marcada como ocupada', () => pm.expect(j.vaga.status).to.eql('ocupada'));",
+                  "pm.collectionVariables.set('ticketPlaca', j.identificador);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /tickets/{{ticketPlaca}}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketPlaca}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketPlaca}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('placa ABC1D23', () => pm.expect(j.placa).to.eql('ABC1D23'));",
+                  "pm.test('ticket ativo (sem saida)', () => pm.expect(j.saida).to.eql(null));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 - Tickets - Saída",
+      "item": [
+        {
+          "name": "POST /tickets/{{ticketId}}/saida (tolerancia - isento)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/saida",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "saida"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('isento, valor 0', () => { pm.expect(j.isento).to.eql(true); pm.expect(j.valor).to.eql(0); });",
+                  "pm.test('status isento', () => pm.expect(j.status_pagamento).to.eql('isento'));",
+                  "pm.test('mensagem presente', () => pm.expect(j.mensagem).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/{{ticketId}}/saida (repetida -> 409)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketId}}/saida",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketId}}",
+                "saida"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "const j = pm.response.json();",
+                  "pm.test('mensagem de saida ja registrada', () => pm.expect(j.detail).to.include('já teve a saída'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/XXXXXXXX/saida (inexistente -> 404)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/XXXXXXXX/saida",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "XXXXXXXX",
+                "saida"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 404', () => pm.response.to.have.status(404));",
+                  "const j = pm.response.json();",
+                  "pm.test('mensagem de ticket nao encontrado', () => pm.expect(j.detail).to.include('não encontrado'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /config/admin/tolerancia_minutos = 0 (preparo da cobranca)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/config/admin/tolerancia_minutos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "config",
+                "admin",
+                "tolerancia_minutos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valor\": \"0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Para demonstrar a cobranca sem esperar 15 min. O ultimo item da pasta restaura 15."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('tolerancia = 0', () => pm.expect(j.valor).to.eql('0'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (comum, setor Verde) - ticket a cobrar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"comum\",\n  \"setor_id\": 2\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 201', () => pm.response.to.have.status(201));",
+                  "const j = pm.response.json();",
+                  "pm.test('tolerancia do ticket = 0', () => pm.expect(j.tolerancia_minutos).to.eql(0));",
+                  "pm.collectionVariables.set('ticketCobrado', j.identificador);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/{{ticketCobrado}}/saida (cobrado R$ 5,00)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/{{ticketCobrado}}/saida",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "{{ticketCobrado}}",
+                "saida"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 1500); // permanencia > 0 s"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('nao isento, valor 5.0', () => { pm.expect(j.isento).to.eql(false); pm.expect(j.valor).to.eql(5.0); });",
+                  "pm.test('status pendente', () => pm.expect(j.status_pagamento).to.eql('pendente'));",
+                  "pm.test('tempo faturavel >= 0 e total coerente', () => pm.expect(j.tempo_total_minutos).to.be.at.least(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /config/admin/tolerancia_minutos = 15 (restaura)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/config/admin/tolerancia_minutos",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "config",
+                "admin",
+                "tolerancia_minutos"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valor\": \"15\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('tolerancia = 15', () => pm.expect(j.valor).to.eql('15'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "O cenario de 76 min = R$ 10,00 e coberto pelo pytest (funcao pura calcular_cobranca com relogio injetado)."
+    },
+    {
+      "name": "07 - Testes de Acessibilidade API",
+      "item": [
+        {
+          "name": "POST /tickets/entrada (tipo invalido -> 422)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"foguete\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 422', () => pm.response.to.have.status(422));",
+                  "const j = pm.response.json();",
+                  "pm.test('detail e lista de erros', () => pm.expect(j.detail).to.be.an('array'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /tickets/entrada (vaga_id ja ocupada -> 409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tickets/entrada",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tickets",
+                "entrada"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tipo_vaga\": \"pcd\",\n  \"vaga_id\": \"{{vagaSugerida}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 409', () => pm.response.to.have.status(409));",
+                  "const j = pm.response.json();",
+                  "pm.test('mensagem legivel em pt-BR', () => pm.expect(j.detail).to.be.a('string'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vagas/disponiveis?setor_id=9999 (vazio)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/vagas/disponiveis?setor_id=9999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "vagas",
+                "disponiveis"
+              ],
+              "query": [
+                {
+                  "key": "setor_id",
+                  "value": "9999"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('total 0 e por_setor vazio', () => { pm.expect(j.total).to.eql(0); pm.expect(j.por_setor).to.have.lengthOf(0); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/info (Equipe 43)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "info"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('Equipe 43 - Aerodactyle', () => pm.expect(j.team).to.include('Equipe 43'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET / (frontend servido pela API)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": []
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('content-type html', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/html'));"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Validacao de codigos de erro e tempo de resposta (< 200 ms nos GETs, aplicado no teste da colecao). Pasta 06 (cenarios de carga) fora do escopo da v2.0."
+    }
+  ],
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.request.method === 'GET') {",
+          "  pm.test('tempo de resposta < 200 ms', () => pm.expect(pm.response.responseTime).to.be.below(200));",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "ticketId",
+      "value": ""
+    },
+    {
+      "key": "ticketPlaca",
+      "value": ""
+    },
+    {
+      "key": "ticketCobrado",
+      "value": ""
+    },
+    {
+      "key": "vagaSugerida",
+      "value": ""
+    }
+  ]
+}
