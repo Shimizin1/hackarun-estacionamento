@@ -3,6 +3,7 @@ Ticket service for CapimParking.
 Handles vehicle entry, exit, pricing with 15-minute tolerance, and ticket management.
 """
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session, joinedload
@@ -14,10 +15,62 @@ from app.models import (
 from app.schemas import (
     TicketEntradaRequest, TicketEntradaResponse,
     TicketSaidaRequest, TicketSaidaResponse,
-    TicketResponse
+    TicketResponse, VagaResponse
 )
 from app.services.vaga_service import VagaService
 from app.services.config_service import ConfigService
+
+
+class TicketNaoEncontrado(LookupError):
+    """Nenhum ticket com o identificador informado."""
+
+
+class TicketJaFinalizado(Exception):
+    """O ticket já teve a saída registrada."""
+
+
+@dataclass(frozen=True)
+class Cobranca:
+    tempo_total_minutos: int      # floor da permanência
+    tempo_faturavel_minutos: int  # ceil do que excede a tolerância (0 se isento)
+    valor: float
+    isento: bool
+
+
+_US_MINUTO = 60 * 1_000_000
+_US_HORA = 3600 * 1_000_000
+
+
+def _ceil_div(a: int, b: int) -> int:
+    return -(-a // b)
+
+
+def calcular_cobranca(
+    entrada: datetime,
+    saida: datetime,
+    tolerancia_minutos: int,
+    valor_hora: float,
+    regra: str = "hora_cheia",
+) -> Cobranca:
+    """
+    Função pura de cobrança (DT1/DT2), calculada em microssegundos inteiros.
+    Permanência <= tolerância: isento. Senão, o excedente é arredondado para
+    cima por hora ('hora_cheia') ou por 15 min ('fracao_15min').
+    """
+    perm_us = max(0, (saida - entrada) // timedelta(microseconds=1))
+    tol_us = tolerancia_minutos * _US_MINUTO
+    total_min = perm_us // _US_MINUTO
+
+    if perm_us <= tol_us:
+        return Cobranca(total_min, 0, 0.0, True)
+
+    fat_us = perm_us - tol_us
+    faturavel_min = _ceil_div(fat_us, _US_MINUTO)
+    if regra == "fracao_15min":
+        horas = _ceil_div(fat_us, 15 * _US_MINUTO) * 0.25
+    else:
+        horas = _ceil_div(fat_us, _US_HORA)
+    return Cobranca(total_min, faturavel_min, round(horas * valor_hora, 2), False)
 
 
 class TicketService:
@@ -31,132 +84,109 @@ class TicketService:
     ) -> TicketEntradaResponse:
         """
         Register vehicle entry and assign a spot.
-        Implements proximity algorithm if preferred sector is full.
+        Transação única (DT3): reserva da vaga + ticket + um commit; qualquer
+        falha faz rollback e a vaga continua livre.
         """
-        # Get configuration
         tolerancia = ConfigService.get_int(db, "tolerancia_minutos", 15)
         valor_hora = ConfigService.get_float(db, "valor_hora", 5.0)
 
-        # Find available spot
-        vaga = cls._encontrar_vaga(db, request.tipo_vaga, request.setor_id)
+        try:
+            vaga = cls._encontrar_vaga(db, request.tipo_vaga, request.setor_id)
 
-        if not vaga:
-            # Try proximity recommendation
-            if request.setor_id:
-                sugestao = VagaService.sugerir_vaga_proxima(
-                    db, request.setor_id, request.tipo_vaga
-                )
-                if sugestao:
-                    vaga = sugestao.vaga
-                else:
-                    raise ValueError(f"Nenhuma vaga {request.tipo_vaga.value} disponível em todo o estacionamento")
-            else:
+            if not vaga:
                 raise ValueError(f"Nenhuma vaga {request.tipo_vaga.value} disponível")
 
-        # Occupy the spot
-        vaga = VagaService.ocupar_vaga(db, vaga.id)
-        if not vaga:
-            raise ValueError("Falha ao ocupar a vaga")
+            # Reserva condicional (UPDATE ... WHERE status = LIVRE), sem commit
+            vaga = VagaService.ocupar_vaga(db, vaga.id, commit=False)
+            if not vaga:
+                raise ValueError("Falha ao ocupar a vaga")
 
-        # Create ticket
-        identificador = cls._gerar_identificador()
-        entrada = datetime.utcnow()
-        tempo_limite = entrada + timedelta(minutes=tolerancia)
+            entrada = datetime.utcnow()
+            tempo_limite = entrada + timedelta(minutes=tolerancia)
 
-        ticket = Ticket(
-            identificador=identificador,
-            vaga_id=vaga.id,
-            entrada=entrada,
-            status_pagamento=StatusPagamento.PENDENTE,
-            placa=request.placa,
-            categoria=request.tipo_vaga,
-            tempo_tolerancia_minutos=tolerancia,
-            valor_hora=valor_hora,
-        )
-        db.add(ticket)
-        db.commit()
-        db.refresh(ticket)
+            ticket = Ticket(
+                identificador=cls._gerar_identificador(),
+                vaga_id=vaga.id,
+                entrada=entrada,
+                status_pagamento=StatusPagamento.PENDENTE,
+                placa=request.placa,
+                categoria=request.tipo_vaga,
+                tempo_tolerancia_minutos=tolerancia,
+                valor_hora=valor_hora,
+            )
+            db.add(ticket)
+            db.flush()
 
-        # Load relationships for response
-        ticket = db.query(Ticket).options(
-            joinedload(Ticket.vaga).joinedload(Vaga.setor),
-            joinedload(Ticket.vaga).joinedload(Vaga.carregador)
-        ).filter(Ticket.id == ticket.id).first()
-
-        return TicketEntradaResponse(
-            identificador=ticket.identificador,
-            vaga=VagaResponse.model_validate(ticket.vaga),
-            entrada=ticket.entrada,
-            tolerancia_minutos=tolerancia,
-            valor_hora=valor_hora,
-            tempo_limite_tolerancia=tempo_limite,
-            mensagem=cls._gerar_mensagem_entrada(ticket, vaga, tolerancia),
-        )
+            response = TicketEntradaResponse(
+                identificador=ticket.identificador,
+                vaga=VagaResponse.model_validate(vaga),
+                entrada=ticket.entrada,
+                tolerancia_minutos=tolerancia,
+                valor_hora=valor_hora,
+                tempo_limite_tolerancia=tempo_limite,
+                mensagem=cls._gerar_mensagem_entrada(ticket, vaga, tolerancia),
+            )
+            db.commit()
+            return response
+        except Exception:
+            db.rollback()
+            raise
 
     @classmethod
     def registrar_saida(
         cls,
         db: Session,
-        request: TicketSaidaRequest
+        request: TicketSaidaRequest,
+        agora: Optional[datetime] = None,
     ) -> TicketSaidaResponse:
         """
-        Register vehicle exit and calculate pricing.
-        Applies 15-minute tolerance rule.
+        Register vehicle exit and calculate pricing (tolerância + DT1).
+        `agora` é injetável para testes.
         """
-        # Find active ticket
         ticket = db.query(Ticket).options(
             joinedload(Ticket.vaga).joinedload(Vaga.setor),
             joinedload(Ticket.vaga).joinedload(Vaga.carregador)
-        ).filter(
-            and_(
-                Ticket.identificador == request.identificador,
-                Ticket.saida.is_(None)
-            )
-        ).first()
+        ).filter(Ticket.identificador == request.identificador).first()
 
         if not ticket:
-            raise ValueError("Ticket não encontrado ou já finalizado")
+            raise TicketNaoEncontrado("Ticket não encontrado")
+        if ticket.saida is not None:
+            raise TicketJaFinalizado("Este ticket já teve a saída registrada")
 
-        saida = datetime.utcnow()
-        ticket.saida = saida
-
-        # Calculate pricing
-        tempo_total_minutos = int((saida - ticket.entrada).total_seconds() / 60)
-        tempo_faturavel = max(0, tempo_total_minutos - ticket.tempo_tolerancia_minutos)
-
-        if tempo_faturavel <= 0:
-            # Within tolerance - free
-            valor = 0.0
-            status = StatusPagamento.ISENTO
-            isento = True
-        else:
-            # Calculate charge based on rounding rule
+        try:
+            saida = agora or datetime.utcnow()
             regra = ConfigService.get(db, "regra_arredondamento", "hora_cheia")
-            valor = cls._calcular_valor(tempo_faturavel, ticket.valor_hora, regra)
-            status = StatusPagamento.PENDENTE
-            isento = False
+            cobranca = calcular_cobranca(
+                ticket.entrada, saida, ticket.tempo_tolerancia_minutos,
+                ticket.valor_hora, regra,
+            )
+            status = StatusPagamento.ISENTO if cobranca.isento else StatusPagamento.PENDENTE
 
-        ticket.valor = valor
-        ticket.status_pagamento = status
-        ticket.updated_at = saida
+            ticket.saida = saida
+            ticket.valor = cobranca.valor
+            ticket.status_pagamento = status
+            ticket.updated_at = saida
 
-        # Free the spot
-        if ticket.vaga_id:
-            VagaService.liberar_vaga(db, ticket.vaga_id)
+            if ticket.vaga_id:
+                VagaService.liberar_vaga(db, ticket.vaga_id, commit=False)
 
-        db.commit()
-        db.refresh(ticket)
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
 
         return TicketSaidaResponse(
             identificador=ticket.identificador,
             entrada=ticket.entrada,
             saida=ticket.saida,
-            tempo_total_minutos=tempo_total_minutos,
-            tempo_faturavel_minutos=tempo_faturavel,
-            valor=valor,
+            tempo_total_minutos=cobranca.tempo_total_minutos,
+            tempo_faturavel_minutos=cobranca.tempo_faturavel_minutos,
+            valor=cobranca.valor,
             status_pagamento=status,
-            isento=isento,
-            mensagem=cls._gerar_mensagem_saida(ticket, tempo_total_minutos, tempo_faturavel, valor, isento),
+            isento=cobranca.isento,
+            mensagem=cls._gerar_mensagem_saida(
+                ticket, cobranca.tempo_total_minutos,
+                cobranca.tempo_faturavel_minutos, cobranca.valor, cobranca.isento),
         )
 
     @classmethod
@@ -235,29 +265,6 @@ class TicketService:
         """Generate a short unique identifier for the ticket."""
         # Use first 8 chars of UUID, uppercase
         return str(uuid.uuid4())[:8].upper()
-
-    @classmethod
-    def _calcular_valor(
-        cls,
-        minutos_faturaveis: int,
-        valor_hora: float,
-        regra: str
-    ) -> float:
-        """
-        Calculate charge based on rounding rule.
-        Rules:
-        - 'hora_cheia': Round up to full hours
-        - 'fracao_15min': Round up to 15-minute fractions
-        """
-        if regra == "fracao_15min":
-            # Round up to 15-minute blocks
-            fracoes = (minutos_faturaveis + 14) // 15
-            horas = fracoes * 0.25
-        else:
-            # Default: round up to full hours
-            horas = (minutos_faturaveis + 59) // 60
-
-        return round(horas * valor_hora, 2)
 
     @classmethod
     def _gerar_mensagem_entrada(

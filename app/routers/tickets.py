@@ -6,7 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.services.ticket_service import TicketService
+from app.services.ticket_service import (
+    TicketService, TicketNaoEncontrado, TicketJaFinalizado,
+)
 from app.schemas import (
     TicketEntradaRequest, TicketEntradaResponse,
     TicketSaidaRequest, TicketSaidaResponse,
@@ -30,16 +32,31 @@ def registrar_entrada(request: TicketEntradaRequest, db: Session = Depends(get_d
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+def _saida(db: Session, identificador: str) -> TicketSaidaResponse:
+    try:
+        return TicketService.registrar_saida(
+            db, TicketSaidaRequest(identificador=identificador)
+        )
+    except TicketNaoEncontrado as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except TicketJaFinalizado as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
 @router.post("/saida", response_model=TicketSaidaResponse)
 def registrar_saida(request: TicketSaidaRequest, db: Session = Depends(get_db)):
     """
     Registrar saída de veículo e calcular valor.
-    Aplica tolerância de 15 minutos (configurável).
+    Aplica tolerância (configurável).
+    404 se o ticket não existe; 409 se a saída já foi registrada.
     """
-    try:
-        return TicketService.registrar_saida(db, request)
-    except ValueError as e:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    return _saida(db, request.identificador)
+
+
+@router.post("/{identificador}/saida", response_model=TicketSaidaResponse)
+def registrar_saida_por_id(identificador: str, db: Session = Depends(get_db)):
+    """Alias da documentação: saída pelo identificador na URL."""
+    return _saida(db, identificador)
 
 
 @router.get("/{identificador}", response_model=TicketResponse)

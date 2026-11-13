@@ -6,7 +6,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_, or_
+from sqlalchemy import func, and_, or_, update
 from app.models import (
     Vaga, Setor, Carregador, RelatoColaborativo,
     TipoVaga, StatusVaga, StatusCarregador, OrigemDado
@@ -30,68 +30,61 @@ class VagaService:
         db: Session,
         request: VagasDisponiveisRequest
     ) -> VagasDisponiveisResponse:
-        """Get available spots with filters."""
-        query = db.query(Vaga).options(
-            joinedload(Vaga.setor),
-            joinedload(Vaga.carregador)
-        ).filter(Vaga.status == StatusVaga.LIVRE)
+        """
+        Vagas livres com filtros. `por_setor` traz TODOS os setores que passam em
+        setor_id/andar (inclusive com livres=0); os contadores respeitam os
+        filtros de tipo e de carregador.
+        """
+        def filtros(q):
+            if request.tipo:
+                q = q.filter(Vaga.tipo == request.tipo)
+            if request.apenas_com_carregador:
+                q = q.filter(Vaga.tem_carregador == True)  # noqa: E712
+            return q
 
-        # Apply filters
-        if request.tipo:
-            query = query.filter(Vaga.tipo == request.tipo)
+        query = filtros(
+            db.query(Vaga).options(joinedload(Vaga.setor), joinedload(Vaga.carregador))
+            .join(Setor, Vaga.setor_id == Setor.id)
+            .filter(Vaga.status == StatusVaga.LIVRE)
+        )
         if request.setor_id:
             query = query.filter(Vaga.setor_id == request.setor_id)
         if request.andar:
-            query = query.join(Setor).filter(Setor.andar == request.andar)
-        if request.apenas_com_carregador:
-            query = query.filter(Vaga.tem_carregador == True)
+            query = query.filter(Setor.andar == request.andar)
+        vagas = query.order_by(Vaga.id).all()
 
-        vagas = query.all()
+        setores_q = db.query(Setor)
+        if request.setor_id:
+            setores_q = setores_q.filter(Setor.id == request.setor_id)
+        if request.andar:
+            setores_q = setores_q.filter(Setor.andar == request.andar)
+        setores = setores_q.order_by(Setor.id).all()
 
-        # Group by setor
-        por_setor = {}
-        for vaga in vagas:
-            setor_id = vaga.setor_id
-            if setor_id not in por_setor:
-                por_setor[setor_id] = {
-                    "setor": vaga.setor,
-                    "livres": 0,
-                    "ocupadas": 0,
-                    "total": 0,
-                }
-            por_setor[setor_id]["livres"] += 1
+        contagem: dict = {}
+        linhas = filtros(
+            db.query(Vaga.setor_id, Vaga.status, func.count(Vaga.id))
+        ).group_by(Vaga.setor_id, Vaga.status).all()
+        for sid, st, qtd in linhas:
+            contagem.setdefault(sid, {})[st] = qtd
 
-        # Get totals per setor
-        for setor_id, data in por_setor.items():
-            total = db.query(func.count(Vaga.id)).filter(Vaga.setor_id == setor_id).scalar()
-            ocupadas = db.query(func.count(Vaga.id)).filter(
-                and_(Vaga.setor_id == setor_id, Vaga.status == StatusVaga.OCUPADA)
-            ).scalar()
-            data["total"] = total
-            data["ocupadas"] = ocupadas
-
-        vagas_por_setor = [
-            VagasPorSetor(
-                setor_id=sid,
-                setor_nome=data["setor"].nome,
-                setor_cor=data["setor"].cor,
-                andar=data["setor"].andar,
-                livres=data["livres"],
-                ocupadas=data["ocupadas"],
-                total=data["total"],
-            )
-            for sid, data in por_setor.items()
-        ]
-
-        # Determine reliability level
-        # For now, all simulated
-        nivel = "simulado"
+        vagas_por_setor = []
+        for setor in setores:
+            c = contagem.get(setor.id, {})
+            vagas_por_setor.append(VagasPorSetor(
+                setor_id=setor.id,
+                setor_nome=setor.nome,
+                setor_cor=setor.cor,
+                andar=setor.andar,
+                livres=c.get(StatusVaga.LIVRE, 0),
+                ocupadas=c.get(StatusVaga.OCUPADA, 0),
+                total=sum(c.values()),
+            ))
 
         return VagasDisponiveisResponse(
             vagas=[VagaResponse.model_validate(v) for v in vagas],
             total=len(vagas),
             por_setor=vagas_por_setor,
-            nivel_confiabilidade=nivel,
+            nivel_confiabilidade="simulado",
             atualizado_em=datetime.utcnow(),
         )
 
@@ -222,28 +215,33 @@ class VagaService:
             )
 
     @classmethod
-    def ocupar_vaga(cls, db: Session, vaga_id: int) -> Optional[Vaga]:
-        """Mark a spot as occupied."""
-        vaga = db.query(Vaga).filter(Vaga.id == vaga_id).first()
-        if vaga and vaga.status == StatusVaga.LIVRE:
-            vaga.status = StatusVaga.OCUPADA
-            vaga.updated_at = datetime.utcnow()
+    def _mudar_status(
+        cls, db: Session, vaga_id: int,
+        de: StatusVaga, para: StatusVaga, commit: bool
+    ) -> Optional[Vaga]:
+        """UPDATE condicional (compare-and-set) do status; None se não estava em `de`."""
+        resultado = db.execute(
+            update(Vaga)
+            .where(Vaga.id == vaga_id, Vaga.status == de)
+            .values(status=para, updated_at=datetime.utcnow())
+        )
+        if resultado.rowcount != 1:
+            return None
+        if commit:
             db.commit()
-            db.refresh(vaga)
-            return vaga
-        return None
+        else:
+            db.flush()
+        return db.query(Vaga).filter(Vaga.id == vaga_id).populate_existing().first()
 
     @classmethod
-    def liberar_vaga(cls, db: Session, vaga_id: int) -> Optional[Vaga]:
-        """Mark a spot as free."""
-        vaga = db.query(Vaga).filter(Vaga.id == vaga_id).first()
-        if vaga and vaga.status == StatusVaga.OCUPADA:
-            vaga.status = StatusVaga.LIVRE
-            vaga.updated_at = datetime.utcnow()
-            db.commit()
-            db.refresh(vaga)
-            return vaga
-        return None
+    def ocupar_vaga(cls, db: Session, vaga_id: int, commit: bool = True) -> Optional[Vaga]:
+        """Marca a vaga como ocupada (atômico: só se estiver LIVRE)."""
+        return cls._mudar_status(db, vaga_id, StatusVaga.LIVRE, StatusVaga.OCUPADA, commit)
+
+    @classmethod
+    def liberar_vaga(cls, db: Session, vaga_id: int, commit: bool = True) -> Optional[Vaga]:
+        """Marca a vaga como livre (só se estiver OCUPADA)."""
+        return cls._mudar_status(db, vaga_id, StatusVaga.OCUPADA, StatusVaga.LIVRE, commit)
 
     @classmethod
     def get_vaga_by_id(cls, db: Session, vaga_id: int) -> Optional[Vaga]:
