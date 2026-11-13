@@ -1,17 +1,17 @@
 # 🏪 Sistema de Estacionamento Inteligente - Shopping
 
-## 📋 Hackarun | Equipe 44 - Aerodactyle
+## 📋 Hackarun 2026 | Equipe 43 - Aerodactyle
 
 ---
 
 ### 👥 Integrantes da Equipe
 
-| Nome | Função |
-|------|--------|
-| **Guilherme Abreu** | Desenvolvedor Backend / Arquitetura |
-| **Álvaro Franco** | Desenvolvedor Fullstack / API |
-| **Flávio Antônio** | Desenvolvedor Backend / Banco de Dados |
-| **Matheus Dassoler** | Desenvolvedor Frontend / UX & Acessibilidade |
+| Integrante | Período |
+|------------|---------|
+| **Guilherme Abreu** | 6º período |
+| **Flávio Antônio** | 4º período |
+| **Matheus Dassoler** | 2º período |
+| **Álvaro Franco** | 1º período |
 
 ---
 
@@ -164,169 +164,49 @@ flowchart TD
 
 ## 🛠️ 4. Stack Tecnológica
 
-| Camada | Tecnologia | Justificativa |
-|--------|------------|---------------|
-| **Backend** | Python 3.11+ (FastAPI) | Performance, tipagem, docs automáticas (Swagger/OpenAPI) |
-| **API Testing** | Postman | Coleções compartilháveis, testes automatizados, CI/CD |
-| **Banco de Dados** | **SQLite** (dev/protótipo) → **PostgreSQL** (produção) | SQLite: zero config, perfeito para Postman local. PostgreSQL: robustez, concorrência, JSONB |
-| **ORM** | SQLAlchemy 2.0 + Alembic | Migrações, async support, type-safe |
-| **Validação** | Pydantic v2 | Serialização, validação, docs automáticas |
-| **Containerização** | Docker + Docker Compose | Ambiente consistente, deploy simples |
-| **Documentação API** | Swagger UI (built-in FastAPI) | Testes interativos no navegador |
-
-### Por que SQLite + Postman?
-- ✅ **Zero configuração** - Arquivo único, roda em qualquer lugar
-- ✅ **Postman nativo** - `sqlite3` CLI ou extensões permitem inspecionar DB direto
-- ✅ **Migração trivial para PostgreSQL** - Mesma sintaxe SQLAlchemy
-- ✅ **Ideal para Hackarun** - Protótipo funcional em minutos
+| Item | Escolha | Por quê |
+|------|---------|---------|
+| **Linguagem** | Python 3.11+ | Rápido de prototipar |
+| **API** | FastAPI | Docs automáticas (Swagger), validação nativa |
+| **Banco** | SQLite | Zero config, arquivo único, roda em qualquer lugar |
+| **Testes API** | Postman | Coleções de requisições compartilháveis |
+| **ORM** | SQLAlchemy | Mapeamento simples das entidades |
 
 ---
 
-## 🏗️ 5. Arquitetura do Sistema
+## 🏗️ 5. Arquitetura
 
-### 5.1 Diagrama de Componentes
+### 5.1 Estrutura
 
-```mermaid
-graph TB
-    subgraph "Cliente"
-        UI[Interface Única\nTotem/Tablet/Mobile]
-    end
-    
-    subgraph "API Gateway"
-        GW[FastAPI App]
-    end
-    
-    subgraph "Serviços"
-        SV[Vaga Service]
-        ST[Ticket Service]
-        CF[Config Service]
-        PR[Proximidade Service]
-    end
-    
-    subgraph "Dados"
-        DB[(SQLite/PostgreSQL)]
-    end
-    
-    UI -->|REST/JSON| GW
-    GW --> SV
-    GW --> ST
-    GW --> CF
-    GW --> PR
-    SV --> DB
-    ST --> DB
-    CF --> DB
-    PR --> DB
+```
+app/
+├── main.py              # FastAPI app + rotas diretas
+├── models.py            # SQLAlchemy models (Setor, Vaga, Ticket, Config)
+├── schemas.py           # Pydantic schemas (request/response)
+├── database.py          # SQLite connection + session
+└── services.py          # Lógica de negócio (proximidade, ticket, valor)
 ```
 
-### 5.2 Modelagem de Dados (ER)
+### 5.2 Modelos Essenciais
 
-```mermaid
-erDiagram
-    SETOR ||--o{ VAGA : possui
-    VAGA ||--o{ TICKET : gera
-    CONFIG ||--o{ SETOR : configura
-    
-    SETOR {
-        int id PK
-        string nome
-        string cor
-        int andar
-        string bloco
-        int capacidade_total
-        datetime created_at
-    }
-    
-    VAGA {
-        int id PK
-        int setor_id FK
-        string numero
-        enum tipo {comum, idoso, pcd, neurodivergente, eletrico, moto}
-        enum status {livre, ocupada, manutencao, reservada}
-        boolean tem_carregador
-        int coordenada_x
-        int coordenada_y
-        datetime created_at
-    }
-    
-    TICKET {
-        int id PK
-        int vaga_id FK
-        datetime entrada
-        datetime saida
-        decimal valor
-        enum status_pagamento {pendente, pago, isento}
-        string placa_veiculo
-        datetime created_at
-    }
-    
-    CONFIG {
-        int id PK
-        int tolerancia_minutos DEFAULT 15
-        decimal valor_hora DEFAULT 5.00
-        int tempo_max_recarga_ev DEFAULT 120
-        datetime updated_at
-    }
-```
+| Tabela | Campos Principais |
+|--------|-------------------|
+| **Setor** | id, nome, cor, andar, capacidade_total |
+| **Vaga** | id, setor_id, numero, tipo, status, tem_carregador, x, y |
+| **Ticket** | id, vaga_id, entrada, saida, valor, status_pagamento, placa |
+| **Config** | id, tolerancia_minutos (15), valor_hora (5.00), tempo_max_recarga_ev (120) |
 
-### 5.3 Endpoints da API (RESTful)
+### 5.3 Endpoints Principais
 
 | Método | Endpoint | Descrição |
 |--------|----------|-----------|
-| `GET` | `/api/v1/vagas/disponiveis` | Lista vagas livres com filtros (tipo, setor, andar) |
-| `GET` | `/api/v1/vagas/proximas` | Busca vaga mais próxima (params: setor_desejado, tipo_vaga) |
-| `GET` | `/api/v1/setores` | Lista todos os setores com contagem de vagas livres |
-| `POST` | `/api/v1/tickets/entrada` | Registra entrada, atribui vaga, gera ticket |
-| `GET` | `/api/v1/tickets/{id}` | Consulta ticket ativo |
-| `POST` | `/api/v1/tickets/{id}/saida` | Registra saída, calcula valor, libera vaga |
-| `GET` | `/api/v1/config` | Retorna configurações (tolerância, valor hora) |
-| `GET` | `/api/v1/health` | Health check para monitoramento |
+| `GET` | `/vagas/disponiveis` | Lista vagas livres (filtro: tipo, setor) |
+| `GET` | `/vagas/proximas` | Sugere vaga mais próxima se setor cheio |
+| `POST` | `/tickets/entrada` | Cria ticket, atribui vaga |
+| `POST` | `/tickets/{id}/saida` | Finaliza, calcula valor (com tolerância 15min) |
+| `GET` | `/config` | Retorna tolerância e valor/hora |
 
-#### Exemplo: `POST /api/v1/tickets/entrada`
-
-**Request**:
-```json
-{
-  "tipo_vaga": "comum",
-  "setor_preferido": "azul",
-  "placa_veiculo": "ABC-1234"
-}
-```
-
-**Response (201)**:
-```json
-{
-  "ticket_id": 42,
-  "vaga": {
-    "id": 15,
-    "numero": "A-12",
-    "setor": "Azul",
-    "andar": "Térreo",
-    "tipo": "comum"
-  },
-  "entrada": "2026-11-13T14:30:00Z",
-  "tolerancia_ate": "2026-11-13T14:45:00Z",
-  "valor_hora": 5.00,
-  "ticket_impresso": "base64_do_pdf_ou_texto_formatado"
-}
-```
-
-#### Exemplo: `GET /api/v1/vagas/proximas?setor_desejado=azul&tipo_vaga=comum`
-
-**Response**:
-```json
-{
-  "vaga_sugerida": {
-    "id": 23,
-    "numero": "B-05",
-    "setor": "Verde",
-    "andar": "Térreo",
-    "distancia_metros": 45,
-    "tempo_caminhada_segundos": 60
-  },
-  "setor_original": "Azul",
-  "motivo": "Nenhuma vaga comum livre no setor Azul"
-}
-```
+> **Foco**: 5 endpoints que cobrem 100% do fluxo principal. Swagger em `/docs` para testar.
 
 ---
 
@@ -417,17 +297,12 @@ erDiagram
 
 ---
 
-## 📅 8. Cronograma de Entregas - Hackarun
+## 📅 8. Cronograma
 
-| Sprint | Período | Entregáveis | Responsáveis |
-|--------|---------|-------------|--------------|
-| **Sprint 0** | Semana 1 | Setup repo, Docker, DB, CI/CD, docs | Todos |
-| **Sprint 1** | Semana 2 | CRUD Setores/Vagas, API base, Swagger | Guilherme, Flávio |
-| **Sprint 2** | Semana 3 | Lógica de ticket, tolerância, cálculo valor | Álvaro, Flávio |
-| **Sprint 3** | Semana 4 | Algoritmo proximidade, tipos de vaga, EV | Guilherme, Matheus |
-| **Sprint 4** | Semana 5 | Interface única acessível, ticket impresso | Matheus, Álvaro |
-| **Sprint 5** | Semana 6 | Testes Postman, integração, bug fixes, demo | Todos |
-| **Entrega Final** | **Fim Semana 6** | **Sistema funcional + Documentação + Apresentação** | **Equipe 44** |
+| Item | Data |
+|------|------|
+| **Período do projeto** | 11/12 a 14/12 (encerramento do desafio Hackarun) |
+| **Entrega de hoje (13/11, até 12h)** | Documentação do projeto |
 
 ---
 
@@ -465,174 +340,21 @@ erDiagram
     └── Tempo de resposta
 ```
 
-### Critérios de Aceitação Automatizados (Postman Tests)
-```javascript
-// Exemplo: Teste de tolerância 15 min
-pm.test("Passagem rápida ≤ 15 min = valor 0", () => {
-    const response = pm.response.json();
-    pm.expect(response.valor).to.equal(0);
-    pm.expect(response.status_pagamento).to.equal("isento");
-});
-
-// Teste de proximidade
-pm.test("Vaga sugerida é do tipo correto e mais próxima", () => {
-    const vaga = pm.response.json().vaga_sugerida;
-    pm.expect(vaga.tipo).to.equal("comum");
-    pm.expect(vaga.distancia_metros).to.be.below(100);
-});
-```
-
 ---
 
-## 📁 10. Estrutura do Projeto
+## 📜 Créditos
 
-```
-hackarun-estacionamento/
-├── 📁 app/
-│   ├── 📁 api/
-│   │   ├── 📁 v1/
-│   │   │   ├── endpoints/
-│   │   │   │   ├── vagas.py
-│   │   │   │   ├── tickets.py
-│   │   │   │   ├── setores.py
-│   │   │   │   └── config.py
-│   │   │   └── router.py
-│   │   └── deps.py
-│   ├── 📁 core/
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   └── security.py (futuro)
-│   ├── 📁 models/
-│   │   ├── setor.py
-│   │   ├── vaga.py
-│   │   ├── ticket.py
-│   │   └── configuracao.py
-│   ├── 📁 schemas/
-│   │   ├── vaga.py
-│   │   ├── ticket.py
-│   │   └── setor.py
-│   ├── 📁 services/
-│   │   ├── vaga_service.py
-│   │   ├── ticket_service.py
-│   │   ├── proximidade_service.py
-│   │   └── ticket_pdf_service.py
-│   └── main.py
-├── 📁 tests/
-│   ├── test_vagas.py
-│   ├── test_tickets.py
-│   └── test_proximidade.py
-├── 📁 postman/
-│   └── Hackarun_Estacionamento.postman_collection.json
-├── 📁 alembic/
-│   └── versions/
-├── 📁 docs/
-│   └── ARQUITETURA.md
-├── .env.example
-├── docker-compose.yml
-├── Dockerfile
-├── requirements.txt
-├── pyproject.toml
-└── README.md
-```
+**HACKARUN 2026 — EQUIPE 43 — AERODACTYLE**  
+Guilherme Abreu · Álvaro Franco · Flávio Antônio · Matheus Dassoler  
 
----
-
-## 🚀 11. Como Executar (Desenvolvimento)
-
-### Pré-requisitos
-- Docker 24+ / Docker Compose 2+
-- Python 3.11+ (para desenvolvimento local sem Docker)
-- Postman (para testes de API)
-
-### Com Docker (Recomendado)
-```bash
-# Clone e entre no diretório
-cd hackarun-estacionamento
-
-# Suba os containers
-docker-compose up -d --build
-
-# API disponível em:
-# http://localhost:8000
-# Swagger UI: http://localhost:8000/docs
-# ReDoc: http://localhost:8000/redoc
-
-# Ver logs
-docker-compose logs -f api
-
-# Rodar migrações (se necessário)
-docker-compose exec api alembic upgrade head
-
-# Popular banco com dados de teste
-docker-compose exec api python -m app.scripts.seed_data
-```
-
-### Local (Sem Docker)
-```bash
-# Criar venv
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# .venv\Scripts\activate   # Windows
-
-# Instalar dependências
-pip install -r requirements.txt
-
-# Configurar variáveis
-cp .env.example .env
-# Editar .env se necessário
-
-# Rodar migrações
-alembic upgrade head
-
-# Popular dados
-python -m app.scripts.seed_data
-
-# Iniciar servidor
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-### Testes com Postman
-1. Importe `postman/Hackarun_Estacionamento.postman_collection.json`
-2. Configure environment: `base_url = http://localhost:8000/api/v1`
-3. Execute collection: **Run Collection** → veja resultados
-
----
-
-## 🔮 12. Roadmap Futuro (Pós-Hackarun)
-
-| Fase | Funcionalidade | Valor |
-|------|----------------|-------|
-| **Fase 2** | Pagamento via PIX/QR Code no ticket | Autonomia total |
-| **Fase 2** | App mobile condutor (consulta vaga, histórico) | Fidelização |
-| **Fase 2** | Dashboard admin (ocupação, receita, heatmap) | Gestão |
-| **Fase 3** | Reconhecimento de placa (OCR câmera entrada) | Zero ticket papel |
-| **Fase 3** | Integração com app shopping (promoções, validação) | Ecossistema |
-| **Fase 3** | IA preditiva (previsão de ocupação por horário) | Otimização |
-| **Fase 4** | Vaga compartilhada (reserva por app) | Nova receita |
-| **Fase 4** | Carregamento V2G (vehicle-to-grid) | Sustentabilidade |
-
----
-
-## 📜 13. Licença e Créditos
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│  HACKARUN 2026 - EQUIPE 44 - AERODACTYLE                      │
-├────────────────────────────────────────────────────────────────┤
-│  Guilherme Abreu   │   Álvaro Franco   │   Flávio Antônio     │
-│  Matheus Dassoler  │                                        │
-├────────────────────────────────────────────────────────────────┤
-│  "Tecnologia a serviço da inclusão e mobilidade urbana"       │
-└────────────────────────────────────────────────────────────────┘
-```
+> "Tecnologia a serviço da inclusão e mobilidade urbana"
 
 ---
 
 **Documento versão**: 1.0  
 **Data**: 13/11/2026  
-**Status**: 🟢 **Em Desenvolvimento - Sprint 0**
+**Status**: 🟡 **Documentação — entrega hoje (13/11) até 12h**
 
 ---
 
-*Esta documentação é um artefato vivo e será atualizada a cada sprint.  
-Para dúvidas, consulte a equipe Aerodactyle no Hackarun 2026.*
+*Documento atualizado conforme o andamento do projeto.*
