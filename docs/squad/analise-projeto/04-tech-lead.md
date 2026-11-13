@@ -216,3 +216,74 @@ Pré-condição documentada: banco recém-criado (apagar `data/capimparking.db` 
 
 ## Revisão
 
+Revisão de código da v2.0 feita pelo Tech Lead em 13/11/2026. Escopo: `git diff v1.0..HEAD -- app frontend tests postman scripts README.md CHANGELOG.md requirements.txt` (26 arquivos, +4227/-1068), mais `05-dev.md`, `05-dev-frontend.md` e `06-qa.md`. Os números de linha citados são do `HEAD` (`642d5bb`).
+
+### Verificação executada
+
+| Comando | Resultado |
+|---|---|
+| `.venv\Scripts\python -m pytest -q` | **83 passed, 1 xfailed** em 12,9 s. O xfail estrito é o BUG-01 da QA. |
+| Sonda de concorrência (scratchpad, banco temporário, `TestClient` + 10 threads, 8 rodadas) | 10 entradas `moto` simultâneas com 10 vagas livres: **12 × 201 e 68 × 400 "Falha ao ocupar a vaga"**. Duas saídas simultâneas do mesmo ticket: **8 de 8 rodadas com 200/200**. Ver R1 e R2. |
+| `git ls-files` / `.gitignore` | Nenhum `.db`, `__pycache__` ou `.venv` versionado. `requirements.txt` sem mudança (DT14 ok). |
+
+### Resumo
+
+A v2.0 cumpre o plano. As decisões DT1 a DT15 e os contratos da seção 4.2 foram implementados como especificado:
+- cobrança pura em microssegundos inteiros, mais rigorosa que os segundos do DT1;
+- entrada numa transação única, com `UPDATE` condicional e rollback;
+- `liberar_vaga`/`ocupar_vaga` com `commit=False`;
+- `StaticFiles` montado por último e `/api/info`;
+- `CAPIM_DB_URL`, com `StaticPool` só em memória;
+- seed determinístico com 10 motos;
+- proximidade por bloco e andar;
+- exclusão repetível;
+- `vaga_id` aceito na entrada, com 409;
+- 404/409 na saída e o alias `/tickets/{id}/saida`;
+- conversão UTC para `America/Araguaina` na UI;
+- nenhuma dependência nova.
+
+O padrão do projeto foi respeitado: routers finos, services com `@classmethod`, schemas em `schemas.py` e `detail` em pt-BR. O frontend não tem sink de XSS. O único `innerHTML` (`frontend/app.js:239`) usa a constante `ICONES`, e todo dado vindo da API entra por `textContent`/`createTextNode`. Os testes têm significado: a tabela de fronteira da cobrança, a atomicidade com falha forçada, a coerência dos contadores entre endpoints e o banco temporário isolado de `data/`.
+
+Não há achado Bloqueante nem Alto. Os dois problemas mais relevantes (R1 e R2) são de concorrência. Não afetam a demo, que tem um único usuário e uma UI que bloqueia o duplo envio (`state.ocupado`), mas vale corrigir antes da tag porque a correção é barata.
+
+### Achados
+
+| # | Severidade | Arquivo:linha | Achado | Correção sugerida |
+|---|---|---|---|---|
+| R1 | **Média** | `app/services/ticket_service.py:98-108`, `:260-268` | **Falso "sem vaga" sob concorrência.** Todas as requisições escolhem a mesma vaga (`order_by(Vaga.id).first()`). O `UPDATE` condicional impede a dupla ocupação (DT3 correto), mas quem perde a corrida recebe **400 "Falha ao ocupar a vaga"** mesmo com vagas livres. Na sonda: 68 de 80 entradas recusadas indevidamente. A mensagem não é acionável para o usuário. | Tentar de novo até N vezes (ex.: 5) excluindo as vagas já disputadas quando `ocupar_vaga` devolve `None` e não veio `vaga_id`. Só depois disso responder 400 "Nenhuma vaga X disponível". |
+| R2 | **Média** | `app/services/ticket_service.py:152-182` | **Saída sem compare-and-set.** A checagem `ticket.saida is not None` é feita num `SELECT` anterior. Duas saídas simultâneas do mesmo ticket devolvem 200/200 (8 de 8 rodadas), e a segunda sobrescreve `saida`/`valor`. Pior caso: entre as duas saídas, outra entrada ocupa a mesma vaga, e o `liberar_vaga` da segunda saída (condição `status=OCUPADA`) a marca como LIVRE com um ticket ativo nela, o que abre uma dupla ocupação. | `UPDATE tickets SET saida=:s, valor=:v, status_pagamento=:p WHERE id=:id AND saida IS NULL` com `rowcount == 1`. Se não for 1, levantar `TicketJaFinalizado` (409), mantendo o mesmo padrão do `_mudar_status`. |
+| R3 | **Média** (Should H08) | `app/services/vaga_service.py:41-46` | **BUG-01 da QA confirmado.** `filtros()` ignora `Carregador.status`, então `/vagas/disponiveis?tipo=eletrico` lista e conta vaga com carregador em `manutencao` que a entrada recusa (`ticket_service.py:264-267`). O contador "Elétrico" da UI mente nesse cenário. | Nas vagas e na contagem de `LIVRE`, quando `tipo == ELETRICO` ou `apenas_com_carregador`, aplicar `outerjoin(Carregador)` e exigir `Carregador.status == DISPONIVEL`. Remover o `xfail` de `tests/test_qa_criterios.py:268`. |
+| R4 | **Média** (pós-hackathon) | `app/main.py:78-84`, `:161`; `app/routers/admin.py:87`; `app/routers/config.py:44,53`; `app/routers/vagas.py:102-167` | **Superfície administrativa sem autenticação, com CORS `*` e `allow_credentials=True`.** Qualquer página aberta no navegador da máquina da demo pode chamar `POST /admin/reset` ou `PATCH /config/admin/*` via `fetch`. `python -m app.main` sobe em `0.0.0.0`. Fora do escopo pelo DT15 e já apontado como risco pela QA. | Antes do release, como ganho rápido opcional: remover o `CORSMiddleware`, que deixou de ser necessário porque o frontend é same-origin (DT5), ou restringir a `localhost`. Trocar `0.0.0.0` por `127.0.0.1`. Pós-hackathon: proteger `/admin`, `/config/admin` e a escrita em `/vagas` com token, ou removê-los. |
+| R5 | Baixa | `scripts/run_newman.py:24-37` | Se a porta 8000 já estiver ocupada pela API de desenvolvimento, o uvicorn filho morre sem aviso (stderr em `DEVNULL`), o health check responde a partir da API **real** e o Newman roda contra `data/capimparking.db`: consome vagas e faz `PATCH` da tolerância, que fica em 0 se a coleção falhar no meio. Isso contradiz a promessa "não toca em data/". | No laço de espera, checar `api.poll() is None`, e abortar se o processo filho tiver saído. Outra opção é usar uma porta padrão diferente (ex.: 8765). |
+| R6 | Baixa | `tests/test_qa_criterios.py:162` | O teste de concorrência aceita 400/409 como resultado válido, por isso não detectou o R1. Com 10 motos livres e 10 entradas, o esperado é 10 × 201. | Depois do R1, apertar para `all(c == 201 ...)`. Adicionar um teste de saída concorrente para o R2 (esperado: um 200 e um 409). |
+| R7 | Baixa | `app/services/ticket_service.py:309`, `:325-333` | BUG-03 da QA: o texto de `mensagem` usa hora UTC. A UI não o exibe, mas o Swagger e o Postman sim. | Formatar em `America/Araguaina` (`zoneinfo`, stdlib) ou tirar a hora do texto. |
+| R8 | Baixa | `README.md:58-65` | NOTA-04 da QA: no Windows, `scripts/reset_db.py` falha com `PermissionError` se a API estiver rodando. | Incluir "pare a API (Ctrl+C) antes" na seção. Opcional: capturar o `PermissionError` no script e mostrar essa mesma mensagem. |
+| R9 | Baixa (escopo) | `app/routers/tickets.py` | BUG-02 da QA: não existe consulta por placa (H10, Should). A placa já é normalizada (A14), então a rota é simples. | Pós-hackathon: `GET /tickets/placa/{placa}`, com a placa normalizada e 404 claro. |
+| R10 | Sugestão | `frontend/app.js:455-459` | A cada 30 s, o polling faz 2 ou 3 chamadas a `/vagas/disponiveis`, e cada uma devolve a lista completa de vagas com relacionamentos (cerca de 346 objetos) só para usar `por_setor`/`total`. | Pós-hackathon: parâmetro `resumo=true` que omite `vagas`, ou usar `/setores`. |
+| R11 | Sugestão | `app/services/ticket_service.py:290-293` | Identificador de 32 bits (8 hex de um UUID4) com `unique=True` (`models.py:134`). Uma colisão gera `IntegrityError`, que vira 500 após o rollback. A probabilidade é desprezível no volume da demo. | Pós-hackathon: tentar de novo ao receber `IntegrityError`, ou usar um alfabeto maior (`secrets.token_hex`/base32). |
+| R12 | Sugestão | `app/seed.py:7,11-12` | `import uuid` ficou sem uso, e `SEED = 43` está entre dois blocos de import. | Remover o import e mover a constante para depois dos imports. |
+| R13 | Sugestão | `tests/conftest.py:11` | O diretório `capim_tests_*` criado por `mkdtemp` nunca é removido. | Fixture de sessão com `shutil.rmtree` no teardown. |
+| R14 | Sugestão | `pytest.ini` | `PytestDeprecationWarning` do pytest-asyncio (`asyncio_default_fixture_loop_scope` não definido). | Acrescentar `asyncio_default_fixture_loop_scope = function`. |
+
+Aderência ao plano: DT1 a DT15 **ok**. Os contratos da seção 4.2 e as assinaturas da 4.3 estão **ok**. A única diferença é o cálculo em microssegundos em vez de segundos, que é estritamente melhor e foi coberto pelos testes de fronteira `15min+1us` e `14:59.999999`. Os itens Could (D11, D12, D13) também entraram.
+
+### Antes do release (tag v2.0.0) vs. pós-hackathon
+
+- **Recomendado antes da tag** (cerca de 1h no total, nenhum item bloqueia):
+  - R1 (retry na entrada), com o teste apertado do R6;
+  - R2 (CAS na saída), com o teste de saída concorrente;
+  - R3 (BUG-01, remover o `xfail`);
+  - R5 (guarda do `run_newman.py`);
+  - R8 (aviso no README);
+  - parte rápida do R4 (tirar o CORS `*` e trocar `0.0.0.0` por `127.0.0.1`).
+
+  Depois de cada item, rodar `pytest` e `run_newman.py` de novo.
+- **Pós-hackathon:**
+  - R4 completo (autenticação ou remoção dos endpoints admin);
+  - R7, R9 e R10 a R14;
+  - além do já registrado: subir os pins para Python 3.14 (DT13), datas com fuso no banco (DT12) e um teste de carga real para o RNF de concorrência.
+
+Se o prazo não permitir as correções, a v2.0 pode ser demonstrada como está. O roteiro da seção 8 não exercita nenhum dos achados, e a QA o validou ponta a ponta.
+
+**Veredito da revisão: APROVADO**
+
