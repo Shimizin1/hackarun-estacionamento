@@ -4,16 +4,16 @@ Populates database with data from the Capim Dourado Shopping floor plan.
 Subsolo 1: 140 vagas | Subsolo 2: 216 vagas | Total: 356 vagas
 """
 import random
-import uuid
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
-SEED = 43  # seed fixo: dados de demonstração reproduzíveis (DT7)
 
 from app.models import (
     Base, Setor, Vaga, Carregador, Ticket, Configuracao, RelatoColaborativo,
     TipoVaga, StatusVaga, StatusCarregador, StatusPagamento, OrigemDado, DEFAULT_CONFIGS
 )
+
+SEED = 43  # seed fixo: dados de demonstração reproduzíveis (DT7)
 
 
 def create_setores(db: Session) -> list[Setor]:
