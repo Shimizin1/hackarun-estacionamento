@@ -6,7 +6,7 @@ import math
 from datetime import datetime, timedelta
 from typing import Optional, List, Tuple
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_, or_, update, case
+from sqlalchemy import func, and_, or_, update, case, exists
 from app.models import (
     Vaga, Setor, Carregador, RelatoColaborativo,
     TipoVaga, StatusVaga, StatusCarregador, OrigemDado
@@ -19,6 +19,23 @@ from app.services.config_service import ConfigService
 
 
 CENTRO_SETOR = (50.0, 50.0)
+
+
+def vaga_livre_utilizavel():
+    """
+    Condição SQL de "livre de verdade": status LIVRE e, se elétrica, com
+    carregador DISPONIVEL (mesma regra da entrada, A13).
+    """
+    return and_(
+        Vaga.status == StatusVaga.LIVRE,
+        or_(
+            Vaga.tipo != TipoVaga.ELETRICO,
+            exists().where(
+                Carregador.vaga_id == Vaga.id,
+                Carregador.status == StatusCarregador.DISPONIVEL,
+            ),
+        ),
+    )
 
 
 class VagaService:
@@ -48,7 +65,7 @@ class VagaService:
         query = filtros(
             db.query(Vaga).options(joinedload(Vaga.setor), joinedload(Vaga.carregador))
             .join(Setor, Vaga.setor_id == Setor.id)
-            .filter(Vaga.status == StatusVaga.LIVRE)
+            .filter(vaga_livre_utilizavel())
         )
         if request.setor_id:
             query = query.filter(Vaga.setor_id == request.setor_id)
@@ -65,22 +82,27 @@ class VagaService:
 
         contagem: dict = {}
         linhas = filtros(
-            db.query(Vaga.setor_id, Vaga.status, func.count(Vaga.id))
-        ).group_by(Vaga.setor_id, Vaga.status).all()
-        for sid, st, qtd in linhas:
-            contagem.setdefault(sid, {})[st] = qtd
+            db.query(
+                Vaga.setor_id,
+                func.sum(case((vaga_livre_utilizavel(), 1), else_=0)),
+                func.sum(case((Vaga.status == StatusVaga.OCUPADA, 1), else_=0)),
+                func.count(Vaga.id),
+            )
+        ).group_by(Vaga.setor_id).all()
+        for sid, livres, ocupadas, total in linhas:
+            contagem[sid] = (livres or 0, ocupadas or 0, total)
 
         vagas_por_setor = []
         for setor in setores:
-            c = contagem.get(setor.id, {})
+            livres, ocupadas, total = contagem.get(setor.id, (0, 0, 0))
             vagas_por_setor.append(VagasPorSetor(
                 setor_id=setor.id,
                 setor_nome=setor.nome,
                 setor_cor=setor.cor,
                 andar=setor.andar,
-                livres=c.get(StatusVaga.LIVRE, 0),
-                ocupadas=c.get(StatusVaga.OCUPADA, 0),
-                total=sum(c.values()),
+                livres=livres,
+                ocupadas=ocupadas,
+                total=total,
             ))
 
         return VagasDisponiveisResponse(

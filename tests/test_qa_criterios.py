@@ -279,7 +279,6 @@ def test_listagem_eletrico_so_com_carregador_disponivel(client):
     assert all(v["tem_carregador"] and v["carregador"]["status"] == "disponivel" for v in corpo["vagas"])
 
 
-@pytest.mark.xfail(strict=True, reason="BUG-01 (QA v2.0): /vagas/disponiveis lista vaga EV com carregador em manutencao")
 def test_eletrico_com_carregador_em_manutencao_nao_e_listado_nem_dado(client, db):
     """H08 cenario 3: vaga com carregador em manutencao nao e oferecida (nem listada)."""
     db.query(Carregador).update({Carregador.status: StatusCarregador.MANUTENCAO})
