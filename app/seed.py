@@ -3,10 +3,13 @@ Seed script for CapimParking database.
 Populates database with data from the Capim Dourado Shopping floor plan.
 Subsolo 1: 140 vagas | Subsolo 2: 216 vagas | Total: 356 vagas
 """
+import random
 import uuid
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.database import engine, SessionLocal, init_db
+SEED = 43  # seed fixo: dados de demonstração reproduzíveis (DT7)
+
 from app.models import (
     Base, Setor, Vaga, Carregador, Ticket, Configuracao, RelatoColaborativo,
     TipoVaga, StatusVaga, StatusCarregador, StatusPagamento, OrigemDado, DEFAULT_CONFIGS
@@ -85,6 +88,7 @@ def create_vagas(db: Session, setores: list[Setor]) -> list[Vaga]:
             TipoVaga.PCD: 1,
             TipoVaga.IDOSO: 2,
             TipoVaga.GESTANTE: 1,
+            TipoVaga.MOTO: 10,  # única área de motos (Subsolo 2, bloco C)
         },
     }
 
@@ -197,25 +201,28 @@ def create_configuracoes(db: Session) -> list[Configuracao]:
 
 
 def create_sample_tickets(db: Session, vagas: list[Vaga]) -> list[Ticket]:
-    """Create some sample tickets for demo."""
-    import random
+    """Create some sample tickets for demo (determinístico; ativos só em vagas comuns)."""
+    rng = random.Random(SEED)
     tickets = []
 
-    # Create 10 active tickets (occupied vagas)
-    vagas_livres = [v for v in vagas if v.status == StatusVaga.LIVRE]
-    random.shuffle(vagas_livres)
+    def novo_id() -> str:
+        return f"{rng.getrandbits(32):08X}"
+
+    # Create 10 active tickets (occupied vagas) - só 'comum', para não esgotar tipos especiais
+    vagas_livres = [v for v in vagas if v.status == StatusVaga.LIVRE and v.tipo == TipoVaga.COMUM]
+    rng.shuffle(vagas_livres)
 
     for i in range(min(10, len(vagas_livres))):
         vaga = vagas_livres[i]
         vaga.status = StatusVaga.OCUPADA
 
-        entrada = datetime.utcnow() - timedelta(minutes=random.randint(5, 180))
+        entrada = datetime.utcnow() - timedelta(minutes=rng.randint(5, 180))
         ticket = Ticket(
-            identificador=str(uuid.uuid4())[:8].upper(),
+            identificador=novo_id(),
             vaga_id=vaga.id,
             entrada=entrada,
             status_pagamento=StatusPagamento.PENDENTE,
-            placa=f"ABC{random.randint(1000, 9999)}" if random.random() > 0.3 else None,
+            placa=f"ABC{rng.randint(1000, 9999)}" if rng.random() > 0.3 else None,
             categoria=vaga.tipo,
             tempo_tolerancia_minutos=15,
             valor_hora=5.0,
@@ -225,9 +232,9 @@ def create_sample_tickets(db: Session, vagas: list[Vaga]) -> list[Ticket]:
 
     # Create 5 completed tickets (history)
     for i in range(5):
-        vaga = random.choice(vagas)
-        entrada = datetime.utcnow() - timedelta(hours=random.randint(1, 5))
-        saida = entrada + timedelta(minutes=random.randint(10, 240))
+        vaga = rng.choice(vagas)
+        entrada = datetime.utcnow() - timedelta(hours=rng.randint(1, 5))
+        saida = entrada + timedelta(minutes=rng.randint(10, 240))
         tempo_minutos = (saida - entrada).total_seconds() / 60
 
         if tempo_minutos <= 15:
@@ -239,13 +246,13 @@ def create_sample_tickets(db: Session, vagas: list[Vaga]) -> list[Ticket]:
             status = StatusPagamento.PAGO
 
         ticket = Ticket(
-            identificador=str(uuid.uuid4())[:8].upper(),
+            identificador=novo_id(),
             vaga_id=vaga.id,
             entrada=entrada,
             saida=saida,
             valor=valor,
             status_pagamento=status,
-            placa=f"XYZ{random.randint(1000, 9999)}" if random.random() > 0.3 else None,
+            placa=f"XYZ{rng.randint(1000, 9999)}" if rng.random() > 0.3 else None,
             categoria=vaga.tipo,
             tempo_tolerancia_minutos=15,
             valor_hora=5.0,
@@ -259,7 +266,8 @@ def create_sample_tickets(db: Session, vagas: list[Vaga]) -> list[Ticket]:
 
 def create_sample_relatos(db: Session, setores: list[Setor]) -> list[RelatoColaborativo]:
     """Create sample collaborative reports."""
-    from random import choice, uniform
+    rng = random.Random(SEED)
+    choice, uniform = rng.choice, rng.uniform
     relatos = []
 
     for setor in setores:
