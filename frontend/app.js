@@ -8,6 +8,8 @@
  *   3. Alertas, foco e anúncios
  *   4. Disponibilidade (contadores, tipos, setores)      [F2]
  *   5. Entrada                                           [F2]
+ *   6. Ticket emitido                                    [F3]
+ *   7. Saída                                             [F3]
  */
 (function () {
     'use strict';
@@ -55,6 +57,7 @@
         setores: new Map(),// id -> {id, nome, andar}
         ocupado: false
     };
+    let ultimoTicket = null;
 
     const el = {
         form: $('form-entrada'),
@@ -70,8 +73,19 @@
         btnGerar: $('btn-gerar'),
         entradaStatus: $('entrada-status'),
         configInfo: $('config-info'),
-        announcer: $('sr-announcer')
+        announcer: $('sr-announcer'),
+        blocoTicket: $('bloco-ticket'),
+        tituloTicket: $('h-ticket'),
+        ticketCard: $('ticket-card'),
+        btnImprimir: $('btn-imprimir'),
+        btnNovaEntrada: $('btn-nova-entrada'),
+        formSaida: $('form-saida'),
+        codigo: $('codigo-input'),
+        codigoErro: $('codigo-erro'),
+        btnSaida: $('btn-saida'),
+        saidaStatus: $('saida-status')
     };
+    const CHAVE_CODIGO = 'capim.ultimoTicket';
 
     const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
     const formatarMoeda = (v) => brl.format(Number(v) || 0).replace(/ /g, ' ');
@@ -538,9 +552,224 @@
         }
     }
 
-    // Placeholder substituído na tarefa F3 (bloco de ticket).
-    function mostrarTicket(ticket) {
-        anunciar('Ticket emitido. Código ' + ticket.identificador + '.');
+    /* ======================================================================
+     * 6. Ticket emitido  [F3]
+     * ==================================================================== */
+    function formatarDuracao(min) {
+        const m = Math.max(0, Math.round(min));
+        if (m < 60) return m + ' min';
+        const h = Math.floor(m / 60);
+        const r = m % 60;
+        return r ? h + ' h ' + r + ' min' : h + ' h';
+    }
+
+    function campo(rotulo, valor, larga) {
+        const d = criar('div', 'ticket-field' + (larga ? ' full-width' : ''));
+        d.appendChild(criar('dt', 'ticket-label', rotulo));
+        d.appendChild(criar('dd', 'ticket-value', valor));
+        return d;
+    }
+
+    function descricaoTicket(t) {
+        const v = t.vaga || {};
+        const setor = v.setor || {};
+        return 'Ticket emitido. Vaga ' + v.numero + ', setor ' + (setor.nome || nomeSetor(v.setor_id)) +
+            ', ' + (setor.andar || '') + '. Seu código é ' + t.identificador + '. Você tem ' +
+            t.tolerancia_minutos + ' minutos grátis.';
+    }
+
+    function renderTicket(t) {
+        const v = t.vaga || {};
+        const setor = v.setor || {};
+        limpar(el.ticketCard);
+
+        const cab = criar('div', 'ticket-header');
+        cab.appendChild(criar('h3', 'ticket-title', 'Ticket de estacionamento'));
+        cab.appendChild(criar('span', 'ticket-status active', 'Ativo'));
+        el.ticketCard.appendChild(cab);
+
+        const cod = criar('p', 'ticket-code-line');
+        cod.appendChild(criar('span', 'ticket-label', 'Código '));
+        cod.appendChild(criar('span', 'ticket-code-display', t.identificador));
+        el.ticketCard.appendChild(cod);
+
+        const dl = criar('dl', 'ticket-body');
+        dl.appendChild(campo('Vaga', v.numero || '-'));
+        dl.appendChild(campo('Setor', setor.nome || nomeSetor(v.setor_id)));
+        dl.appendChild(campo('Andar', setor.andar || '-'));
+        dl.appendChild(campo('Tipo', ROTULO_TIPO[v.tipo] || v.tipo || '-'));
+        if (v.carregador && v.carregador.tipo_conector) {
+            dl.appendChild(campo('Carregador', v.carregador.tipo_conector));
+        }
+        const entrada = campo('Entrada', formatarDataHora(t.entrada));
+        const dd = entrada.querySelector('dd');
+        const dt = paraData(t.entrada);
+        if (dt && !isNaN(dt)) {
+            const tm = criar('time', '', dd.textContent);
+            tm.dateTime = dt.toISOString();
+            dd.textContent = '';
+            dd.appendChild(tm);
+        }
+        dl.appendChild(entrada);
+        dl.appendChild(campo('Valor por hora', formatarMoeda(t.valor_hora)));
+        el.ticketCard.appendChild(dl);
+
+        const tol = criar('div', 'ticket-tolerance');
+        tol.appendChild(criar('p', 'ticket-tolerance-label', 'Tolerância de ' + t.tolerancia_minutos + ' minutos'));
+        tol.appendChild(criar('p', 'ticket-tolerance-time', 'Grátis até ' + formatarHora(t.tempo_limite_tolerancia)));
+        el.ticketCard.appendChild(tol);
+
+        if (t.mensagem) el.ticketCard.appendChild(criar('p', 'ticket-message', t.mensagem));
+    }
+
+    function mostrarTicket(t) {
+        ultimoTicket = t;
+        renderTicket(t);
+        try { window.sessionStorage.setItem(CHAVE_CODIGO, t.identificador); } catch (e) { /* sem storage */ }
+        el.codigo.value = t.identificador;
+        limparErroCodigo();
+        limpar(el.saidaStatus);
+        el.blocoTicket.hidden = false;
+        el.tituloTicket.focus();
+        anunciar(descricaoTicket(t));
+    }
+
+    function novaEntrada() {
+        el.blocoTicket.hidden = true;
+        limpar(el.ticketCard);
+        limpar(el.entradaStatus);
+        limparErroTipo();
+        ultimoTicket = null;
+        document.querySelectorAll('input[name="tipo"]').forEach((r) => { r.checked = false; });
+        el.setor.value = '';
+        state.selTipo = null;
+        renderTudo();
+        carregarDisponibilidade({});
+        const primeiro = document.querySelector('input[name="tipo"]');
+        if (primeiro) primeiro.focus();
+    }
+
+    /* ======================================================================
+     * 7. Saída  [F3]
+     * ==================================================================== */
+    function mostrarErroCodigo(texto) {
+        el.codigoErro.hidden = false;
+        limpar(el.codigoErro);
+        el.codigoErro.setAttribute('role', 'alert');
+        el.codigoErro.appendChild(criar('strong', '', 'Erro: '));
+        el.codigoErro.appendChild(document.createTextNode(texto));
+        el.codigo.setAttribute('aria-invalid', 'true');
+        el.codigo.focus();
+    }
+
+    function limparErroCodigo() {
+        el.codigoErro.hidden = true;
+        el.codigoErro.removeAttribute('role');
+        limpar(el.codigoErro);
+        el.codigo.removeAttribute('aria-invalid');
+    }
+
+    function descricaoSaida(r) {
+        if (r.isento) {
+            return 'Saída liberada. Você ficou ' + formatarDuracao(r.tempo_total_minutos) +
+                ', dentro da tolerância. Nada a pagar.';
+        }
+        return 'Você ficou ' + formatarDuracao(r.tempo_total_minutos) + '. Valor a pagar: ' +
+            formatarMoeda(r.valor) + '. Pagamento simulado nesta demonstração.';
+    }
+
+    function renderSaida(r) {
+        limpar(el.saidaStatus);
+        const card = criar('div', 'ticket-card saida-card' + (r.isento ? ' isento' : ''));
+        const cab = criar('div', 'ticket-header');
+        const titulo = criar('h3', 'ticket-title', r.isento ? 'Saída liberada' : 'Valor a pagar');
+        titulo.tabIndex = -1;
+        cab.appendChild(titulo);
+        cab.appendChild(criar('span', 'ticket-status ' + (r.isento ? 'exempt' : 'pending'),
+            r.isento ? 'Isento' : 'Pagamento pendente'));
+        card.appendChild(cab);
+
+        const dl = criar('dl', 'ticket-body');
+        dl.appendChild(campo('Tempo total', formatarDuracao(r.tempo_total_minutos)));
+        dl.appendChild(campo('Tempo cobrado', formatarDuracao(r.tempo_faturavel_minutos)));
+        dl.appendChild(campo('Entrada', formatarDataHora(r.entrada)));
+        dl.appendChild(campo('Saída', formatarDataHora(r.saida)));
+        card.appendChild(dl);
+
+        const total = criar('div', 'ticket-tolerance');
+        total.appendChild(criar('p', 'ticket-tolerance-label', r.isento ? 'Dentro da tolerância' : 'Valor a pagar'));
+        total.appendChild(criar('p', 'ticket-tolerance-time', formatarMoeda(r.valor)));
+        card.appendChild(total);
+
+        card.appendChild(criar('p', 'ticket-message', r.isento
+            ? 'Dentro da tolerância de ' + (state.config ? state.config.tolerancia_minutos : 15) + ' minutos.'
+            : 'Pagamento simulado nesta demonstração.'));
+        if (r.mensagem) card.appendChild(criar('p', 'ticket-message', r.mensagem));
+        el.saidaStatus.appendChild(card);
+        titulo.focus();
+        anunciar(descricaoSaida(r));
+    }
+
+    function normalizarCodigo() {
+        return el.codigo.value.replace(/[\s-]/g, '').toUpperCase();
+    }
+
+    async function registrarSaida(identificador) {
+        if (state.ocupado) return;
+        state.ocupado = true;
+        limpar(el.saidaStatus);
+        setBusy(el.btnSaida, true, 'Calculando valor...');
+        anunciar('Calculando valor...');
+        try {
+            const r = await api('/tickets/saida', { method: 'POST', json: { identificador: identificador } });
+            state.ocupado = false;
+            setBusy(el.btnSaida, false);
+            renderSaida(r);
+            if (ultimoTicket && ultimoTicket.identificador === identificador) {
+                el.blocoTicket.hidden = true;
+                ultimoTicket = null;
+            }
+            try { window.sessionStorage.removeItem(CHAVE_CODIGO); } catch (e) { /* sem storage */ }
+        } catch (err) {
+            state.ocupado = false;
+            setBusy(el.btnSaida, false);
+            tratarErroSaida(err, identificador);
+        } finally {
+            carregarDisponibilidade({ silencioso: true });
+        }
+    }
+
+    function tratarErroSaida(err, identificador) {
+        if (err.kind === 'rede' || err.kind === 'servidor') {
+            mostrarAlerta(el.saidaStatus, {
+                tipo: 'error',
+                titulo: 'Não foi possível conectar ao estacionamento.',
+                texto: MSG.rede,
+                acoes: [{ rotulo: 'Tentar de novo', classe: 'btn-primary', onClick: () => registrarSaida(identificador) }]
+            });
+        } else if (err.status === 404) {
+            mostrarErroCodigo('Ticket não encontrado. Confira o código de 8 caracteres.');
+        } else if (err.status === 409 || err.status === 400) {
+            mostrarErroCodigo('Este ticket já teve a saída registrada.');
+        } else if (err.status === 422) {
+            mostrarErroCodigo(MSG.validacao);
+        } else {
+            mostrarErroCodigo(err.detail || MSG.validacao);
+        }
+    }
+
+    function aoSair(ev) {
+        ev.preventDefault();
+        if (state.ocupado) return;
+        limparErroCodigo();
+        limpar(el.saidaStatus);
+        const codigo = normalizarCodigo();
+        el.codigo.value = codigo;
+        if (!/^[A-Z0-9]{8}$/.test(codigo)) {
+            mostrarErroCodigo('Digite o código de 8 letras e números do seu ticket.');
+            return;
+        }
+        registrarSaida(codigo);
     }
 
     function aoGerar(ev) {
@@ -580,6 +809,14 @@
         document.querySelectorAll('input[name="tipo"]').forEach((r) => r.addEventListener('change', aoMudarTipo));
         el.setor.addEventListener('change', aoMudarSetor);
         el.form.addEventListener('submit', aoGerar);
+        el.formSaida.addEventListener('submit', aoSair);
+        el.btnImprimir.addEventListener('click', () => window.print());
+        el.btnNovaEntrada.addEventListener('click', novaEntrada);
+        el.codigo.addEventListener('input', () => { if (el.codigo.hasAttribute('aria-invalid')) limparErroCodigo(); });
+        try {
+            const salvo = window.sessionStorage.getItem(CHAVE_CODIGO);
+            if (salvo) el.codigo.value = salvo;
+        } catch (e) { /* sem storage */ }
         registrarSetores();
         renderSetores();
         carregarConfig();
