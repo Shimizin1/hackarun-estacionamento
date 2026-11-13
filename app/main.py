@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.database import get_db, init_db, lifespan as db_lifespan
-from app.routers import vagas, tickets, config, admin
+from app.routers import vagas, tickets, config, admin, setores
 from app.services.config_service import ConfigService
 from app.seed import seed_database
 from app.models import Configuracao
@@ -98,6 +98,7 @@ app.include_router(vagas.router)
 app.include_router(tickets.router)
 app.include_router(config.router)
 app.include_router(admin.router)
+app.include_router(setores.router)
 
 
 # Health check endpoint
