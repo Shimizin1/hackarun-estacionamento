@@ -10,6 +10,7 @@
  *   5. Entrada                                           [F2]
  *   6. Ticket emitido                                    [F3]
  *   7. Saída                                             [F3]
+ *   8. Acessibilidade (contraste, fonte, voz)            [F5]
  */
 (function () {
     'use strict';
@@ -248,6 +249,9 @@
         }
         box.appendChild(corpo);
         container.appendChild(box);
+        if (tipo === 'error' || tipo === 'warning') {
+            falarSeAtivo((opcoes.titulo || '') + ' ' + (opcoes.texto || ''));
+        }
         if (opcoes.foco !== false) {
             const alvo = box.querySelector('.alert-actions button') || box;
             alvo.focus({ preventScroll: false });
@@ -632,6 +636,7 @@
         el.blocoTicket.hidden = false;
         el.tituloTicket.focus();
         anunciar(descricaoTicket(t));
+        falarSeAtivo(falaTicket(t));
     }
 
     function novaEntrada() {
@@ -708,6 +713,7 @@
         el.saidaStatus.appendChild(card);
         titulo.focus();
         anunciar(descricaoSaida(r));
+        falarSeAtivo(falaSaida(r));
     }
 
     function normalizarCodigo() {
@@ -805,6 +811,170 @@
         anunciar(textoResumoAnuncio());
     }
 
+    /* ======================================================================
+     * 8. Acessibilidade: contraste, fonte e leitura em voz  [F5]
+     * ==================================================================== */
+    const PREF_CONTRASTE = 'capim.contraste';
+    const PREF_FONTE = 'capim.fonte';
+    const NIVEIS_FONTE = [87.5, 100, 112.5, 125]; // % do tamanho base (16px)
+    let nivelFonte = 1;
+
+    function lerPref(chave) {
+        try { return window.localStorage.getItem(chave); } catch (e) { return null; }
+    }
+
+    function gravarPref(chave, valor) {
+        try { window.localStorage.setItem(chave, valor); } catch (e) { /* sem storage */ }
+    }
+
+    function aplicarContraste(ligado, persistir) {
+        document.documentElement.classList.toggle('high-contrast', ligado);
+        $('btn-high-contrast').setAttribute('aria-pressed', String(ligado));
+        if (persistir) gravarPref(PREF_CONTRASTE, ligado ? '1' : '0');
+    }
+
+    function aplicarFonte(nivel, persistir) {
+        nivelFonte = Math.min(NIVEIS_FONTE.length - 1, Math.max(0, nivel));
+        document.documentElement.style.fontSize = NIVEIS_FONTE[nivelFonte] + '%';
+        $('btn-increase-font').setAttribute('aria-disabled', String(nivelFonte === NIVEIS_FONTE.length - 1));
+        $('btn-decrease-font').setAttribute('aria-disabled', String(nivelFonte === 0));
+        if (persistir) gravarPref(PREF_FONTE, String(nivelFonte));
+    }
+
+    const tts = {
+        suportado: 'speechSynthesis' in window && typeof window.SpeechSynthesisUtterance === 'function',
+        ativo: false,
+        voz: null
+    };
+
+    function escolherVoz() {
+        if (!tts.suportado) return;
+        const vozes = window.speechSynthesis.getVoices() || [];
+        tts.voz = vozes.find((v) => /^pt[-_]BR$/i.test(v.lang)) ||
+            vozes.find((v) => /^pt/i.test(v.lang)) || null;
+    }
+
+    // "R$ 10,00" vira "10 reais"; sem siglas nem símbolos para a voz.
+    function moedaFala(v) {
+        const total = Math.round((Number(v) || 0) * 100);
+        const reais = Math.floor(total / 100);
+        const cent = total % 100;
+        let t = reais + ' ' + plural(reais, 'real', 'reais');
+        if (cent) t += ' e ' + cent + ' ' + plural(cent, 'centavo', 'centavos');
+        return t;
+    }
+
+    function limparFala(texto) {
+        return String(texto)
+            .replace(/R\$\s*(\d+)(?:,(\d{2}))?/g, (m, r, c) =>
+                moedaFala(Number(r) + (c ? Number(c) / 100 : 0)))
+            .replace(/\bPCD\b/g, 'pessoa com deficiência')
+            .replace(/\bEV\b/g, 'elétrico')
+            .replace(/\s+-\s+/g, ', ');
+    }
+
+    function soletrar(codigo) {
+        return String(codigo).split('').join(', ');
+    }
+
+    function falar(texto) {
+        if (!tts.suportado || !texto) return;
+        const synth = window.speechSynthesis;
+        synth.cancel();
+        const u = new window.SpeechSynthesisUtterance(limparFala(texto));
+        u.lang = 'pt-BR';
+        u.rate = 0.9;
+        if (tts.voz) u.voice = tts.voz;
+        synth.speak(u);
+    }
+
+    function falarSeAtivo(texto) {
+        if (tts.ativo) falar(texto);
+    }
+
+    function pararFala() {
+        if (tts.suportado) window.speechSynthesis.cancel();
+    }
+
+    function falaTicket(t) {
+        const v = t.vaga || {};
+        const setor = v.setor || {};
+        return 'Ticket emitido. Vaga ' + v.numero + ', setor ' + (setor.nome || nomeSetor(v.setor_id)) +
+            ', ' + (setor.andar || '') + '. Seu código é ' + soletrar(t.identificador) +
+            '. Você tem ' + t.tolerancia_minutos + ' minutos grátis. Valor por hora, ' +
+            moedaFala(t.valor_hora) + '.';
+    }
+
+    function falaSaida(r) {
+        if (r.isento) return descricaoSaida(r);
+        return 'Você ficou ' + formatarDuracao(r.tempo_total_minutos) + '. Valor a pagar: ' +
+            moedaFala(r.valor) + '. Pagamento simulado nesta demonstração.';
+    }
+
+    function iniciarAcessibilidade() {
+        // Contraste: preferência salva; na primeira visita respeita prefers-contrast.
+        const salvoC = lerPref(PREF_CONTRASTE);
+        const prefereMais = window.matchMedia && window.matchMedia('(prefers-contrast: more)').matches;
+        aplicarContraste(salvoC === null ? prefereMais : salvoC === '1', false);
+        $('btn-high-contrast').addEventListener('click', () => {
+            aplicarContraste(!document.documentElement.classList.contains('high-contrast'), true);
+        });
+
+        const salvoF = parseInt(lerPref(PREF_FONTE), 10);
+        aplicarFonte(isNaN(salvoF) ? 1 : salvoF, false);
+        $('btn-increase-font').addEventListener('click', () => {
+            aplicarFonte(nivelFonte + 1, true);
+            anunciar('Fonte maior.');
+        });
+        $('btn-decrease-font').addEventListener('click', () => {
+            aplicarFonte(nivelFonte - 1, true);
+            anunciar('Fonte menor.');
+        });
+
+        const btnTts = $('btn-tts');
+        const btnOuvir = $('btn-ouvir-ticket');
+        if (!tts.suportado) {
+            btnTts.setAttribute('aria-disabled', 'true');
+            btnTts.removeAttribute('aria-pressed');
+            $('tts-label').textContent = 'Leitura em voz indisponível neste navegador';
+            btnOuvir.setAttribute('aria-disabled', 'true');
+        } else {
+            escolherVoz();
+            window.speechSynthesis.addEventListener('voiceschanged', escolherVoz);
+            btnTts.addEventListener('click', () => {
+                tts.ativo = !tts.ativo;
+                btnTts.setAttribute('aria-pressed', String(tts.ativo));
+                if (tts.ativo) {
+                    falar('Leitura em voz ligada.');
+                } else {
+                    pararFala();
+                    anunciar('Leitura em voz desligada.');
+                }
+            });
+            btnOuvir.addEventListener('click', () => {
+                if (ultimoTicket) falar(falaTicket(ultimoTicket));
+            });
+        }
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key !== 'Escape') return;
+            pararFala();
+            aoEscape();
+        });
+    }
+
+    // Esc: fecha a sugestão/alerta de entrada e devolve o foco ao botão principal. [F5/F6]
+    function aoEscape() {
+        if (el.entradaStatus.contains(document.activeElement) && el.entradaStatus.firstChild) {
+            cancelarSugestao();
+            el.btnGerar.focus();
+        }
+    }
+
+    // Preenchido na tarefa F6 (sugestão de setor cheio).
+    function cancelarSugestao() {
+        limpar(el.entradaStatus);
+    }
+
     function iniciar() {
         document.querySelectorAll('input[name="tipo"]').forEach((r) => r.addEventListener('change', aoMudarTipo));
         el.setor.addEventListener('change', aoMudarSetor);
@@ -817,6 +987,7 @@
             const salvo = window.sessionStorage.getItem(CHAVE_CODIGO);
             if (salvo) el.codigo.value = salvo;
         } catch (e) { /* sem storage */ }
+        iniciarAcessibilidade();
         registrarSetores();
         renderSetores();
         carregarConfig();
