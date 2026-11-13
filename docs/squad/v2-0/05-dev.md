@@ -57,3 +57,22 @@ python scripts/reset_db.py; uvicorn app.main:app   # abrir http://localhost:8000
 - Newman precisa de banco recém-criado; uma segunda execução sobre o mesmo banco falha (ex.: a vaga PCD sugerida já ocupada). `scripts/run_newman.py` evita isso.
 - Datas continuam naive em UTC (D22); a UI converte (DT12).
 - Fica como dívida após o hackathon: subir os pins para suportar o Python 3.14.
+
+## Ciclo de correção 1
+
+Correções da revisão de código (bloco "Antes da tag"), um commit por item.
+
+| Item | Mudança | Arquivos |
+|---|---|---|
+| R1 | Entrada tenta até 5 vezes excluindo vagas já disputadas (transação única e UPDATE condicional mantidos); `vaga_id` explícito continua 409. Teste de concorrência exige 10 x 201 e ids distintos | `app/services/ticket_service.py`, `tests/test_qa_criterios.py` |
+| R2 | Saída com `UPDATE ... WHERE id=? AND saida IS NULL`; rowcount != 1 vira 409 (`TicketJaFinalizado`); vaga liberada na mesma transação. Teste com 2 threads: um 200 e um 409 | idem |
+| R3/BUG-01 | `vaga_livre_utilizavel()` (livre e, se elétrica, carregador `disponivel`) usada em `/vagas/disponiveis` (lista e contadores) e `/setores`; `xfail` removido | `app/services/vaga_service.py`, `app/routers/setores.py` |
+| R5 | `run_newman.py` checa porta ocupada, `api.poll()` durante a espera e usa 127.0.0.1 | `scripts/run_newman.py` |
+| R8 | README avisa para parar a API; `reset_db.py` trata `PermissionError` | `README.md`, `scripts/reset_db.py` |
+| R4 | CORS removido; `python -m app.main` em 127.0.0.1 | `app/main.py` |
+| R7/BUG-03 | `mensagem` com hora UTC-3 (deslocamento fixo; Araguaína não tem horário de verão e evita depender de `tzdata` no Windows) | `ticket_service.py` |
+| R12, R14 | `import uuid` removido e `SEED` reposicionado; `asyncio_default_fixture_loop_scope = function` | `app/seed.py`, `pytest.ini` |
+
+Validação: `pytest -q` 85 passed (sem xfail); Newman 29 requests / 109 asserções / 0 falhas; testes de concorrência repetidos 5 vezes sem flakiness.
+
+Pós-hackathon: R9 (consulta por placa), R10 (resumo em /vagas/disponiveis), R11, R13, pins Python 3.14, datas com fuso no banco, teste de carga real.

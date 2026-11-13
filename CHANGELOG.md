@@ -18,6 +18,12 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Saída repetida e ticket inexistente agora têm respostas distintas: 409 e 404 (D18, DT11).
 - `/admin/ocupacao` (erro em `func.case`) e rota `/vagas/relatos` capturada por `/{vaga_id}` (D11, D13); imports movidos para o topo dos módulos.
 - Nome da equipe: "Equipe 44" passou para "Equipe 43" no backend (D20).
+- Entradas concorrentes não recebem mais 400 com vagas livres: nova tentativa (até 5) excluindo as vagas disputadas (R1).
+- Saída atômica (`UPDATE ... WHERE saida IS NULL`): saídas simultâneas dão um 200 e um 409, sem sobrescrever o valor (R2).
+- `/vagas/disponiveis` e `/setores` não contam nem listam vaga elétrica com carregador indisponível como livre (BUG-01, R3).
+- Hora da mensagem de entrada em UTC-3 (BUG-03, R7).
+- `scripts/run_newman.py` aborta com mensagem clara se a porta está ocupada ou o uvicorn morre (R5); `scripts/reset_db.py` trata `PermissionError` e o README avisa para parar a API (R8).
+- CORS removido (frontend na mesma origem) e `python -m app.main` sobe em `127.0.0.1` (R4).
 
 ### Adicionado
 - `GET /setores` (somente leitura) com contagem de vagas livres e ocupadas.
