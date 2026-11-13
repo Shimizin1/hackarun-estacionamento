@@ -39,4 +39,10 @@ O formato segue o [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) e 
 - Versão da API: 2.0.0.
 
 ### Frontend
-_(a ser preenchido pelo responsável pelo frontend)_
+- Tela única acessível servida em `/`: blocos Entrada, Ticket e Saída, sem mapa nem painel admin (F1).
+- Seis tipos de vaga em radios nativos com contagem de livres, setor opcional, contadores de livres, ocupadas e elétrico, atualizados a cada 30 s (F2).
+- Ticket emitido com vaga, setor, andar, tolerância e valor por hora, horários em Palmas (UTC-3); saída com valor, isenção na tolerância e erros 404 (código inválido) e 409 (saída já registrada) (F3).
+- Tokens de cor revisados para WCAG 2.1 AA (texto, foco, bordas, alto contraste), alertas com ícone e texto, barra de acessibilidade estática (F4).
+- Alto contraste e tamanho de fonte salvos no navegador; leitura em voz opcional em pt-BR; foco gerenciado e uma única região aria-live (F5).
+- Setor cheio: sugestão de vaga próxima com Aceitar, Outra opção (até 3 recusas) e Cancelar; o aceite reserva a vaga mostrada (F6).
+- Rodapé com Equipe 43 Aerodactyle; tipo "gestante" removido da interface.
