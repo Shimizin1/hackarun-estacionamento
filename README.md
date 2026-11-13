@@ -1,423 +1,100 @@
-# 🏪 Sistema de Estacionamento Inteligente - Shopping
+# CapimParking - Estacionamento Inteligente
 
-## 📋 Hackarun 2026 | Equipe 44 - Aerodactyle
+Hackarun 2026 | **Equipe 43 - Aerodactyle** | versão 2.0.0
 
----
+Guilherme Abreu, Álvaro Franco, Flávio Antônio, Matheus Dassoler.
 
-### 👥 Integrantes da Equipe
+Sistema de estacionamento para o Capim Dourado Shopping: entrada e saída **sem login**, tolerância de 15 minutos sem cobrança, vagas por categoria (comum, idoso, PCD, neurodivergente, elétrico, moto, gestante), sugestão de vaga por proximidade quando o setor está cheio e interface única e acessível.
 
-- **Guilherme Abreu**
-- **Álvaro Franco**
-- **Flávio Antônio**
-- **Matheus Dassoler**
+A especificação completa (fonte da verdade) está em [DOCUMENTACAO_PROJETO.md](DOCUMENTACAO_PROJETO.md). O histórico de mudanças está em [CHANGELOG.md](CHANGELOG.md).
 
-> *Funções a serem definidas conforme andamento do desenvolvimento*
+## Stack
 
----
+- Backend: Python + FastAPI 0.115, SQLAlchemy 2.0, Pydantic 2.10, SQLite
+- Frontend: HTML, CSS e JavaScript estáticos (`frontend/`), servidos pela própria API
+- Testes: pytest (`tests/`) e coleção Postman/Newman (`postman/`)
 
-## 🎯 1. Visão Geral do Projeto
-
-### Problema
-O sistema de estacionamento atual do shopping apresenta diversas lacunas que impactam negativamente a experiência do condutor, especialmente grupos minoritários e proprietários de veículos elétricos.
-
-### Solução Proposta
-Desenvolver um **sistema de estacionamento inteligente, acessível e sem burocracia** que opere em uma **única tela**, com interface simples e inclusiva, eliminando a necessidade de login/cadastro e focando na praticidade e qualidade do serviço.
-
-### Princípios Norteadores
-- 🚫 **Zero Login** - Entrada direta, sem cadastro
-- ♿ **Acessibilidade Total** - Interface usável por todos, independente de capacidades físicas/motoras
-- ⚡ **Praticidade** - Fluxo em uma única tela
-- 🎯 **Qualidade de Serviço** - Informações em tempo real, vagas inteligentes
-
----
-
-## 🔍 2. Críticas ao Sistema Atual
-
-| Problema | Impacto | Prioridade |
-|----------|---------|------------|
-| **Falta de vagas para minorias** (idosos, PCD, neurodivergentes) | Exclusão social, dificuldade de acesso | 🔴 Crítica |
-| **Falta de vagas para carros elétricos** | Não atende demanda crescente de EVs | 🔴 Crítica |
-| **Sistema não informa disponibilidade de vagas** | Frustração, perda de tempo, congestionamento interno | 🔴 Crítica |
-| **Ausência de tolerância para passagem rápida** | Cobrança indevida para quem só passa | 🟡 Alta |
-| **Interface complexa / múltiplas telas** | Barreira para usuários com menos familiaridade tecnológica | 🟡 Alta |
-
----
-
-## ✨ 3. Funcionalidades Propostas
-
-### 3.1 Passagem Rápida (Tolerância de 15 min)
-```mermaid
-flowchart TD
-    A[Entrada do Veículo] --> B{Registro de Entrada}
-    B --> C[Tempo ≤ 15 min?]
-    C -->|Sim| D[Saída Livre - Sem Cobrança]
-    C -->|Não| E[Cobrança Normal por Tempo]
-    D --> F[Liberação de Catraca]
-    E --> F
-```
-
-- **Regra**: Primeiros 15 minutos = gratuidade total
-- **Após 15 min**: Cobrança proporcional ao tempo de permanência
-- **Objetivo**: Permitir "drop-off/pick-up" sem custo
-
----
-
-### 3.2 Ticket Impresso com Informações
-```
-┌─────────────────────────────────────┐
-│       SHOPPING CENTER - TICKET      │
-├─────────────────────────────────────┤
-│  Data/Hora Entrada: 13/11/2026 14:30│
-│  Vaga: A-12   │   Setor: Azul       │
-│  Tipo: Comum  │   Andar: Térreo     │
-├─────────────────────────────────────┤
-│  Tolerância: 15 min (até 14:45)     │
-│  Após: R$ 5,00/hora                 │
-├─────────────────────────────────────┤
-│  Guarde este ticket para saída      │
-└─────────────────────────────────────┘
-```
-
-**Informações no ticket**:
-- ✅ Data/hora de entrada
-- ✅ Número da vaga + Setor (cor/nome)
-- ✅ Tipo de vaga (Comum / Idoso / PCD / Neurodivergente / Elétrico)
-- ✅ Andar/Bloco
-- ✅ Tempo de tolerância e valor hora
-
----
-
-### 3.3 Vagas Exclusivas para Carros Elétricos
-- 🔌 **Já equipadas com carregadores** (Tipo 2 / CCS2)
-- 📍 **Localização estratégica**: Próximo a entradas/saídas e elevadores
-- ⚡ **Gestão de recarga**: Tempo máximo de ocupação durante carregamento (ex: 2h)
-- 📊 **Monitoramento**: Status do carregador (livre/ocupado/manutenção) em tempo real
-
----
-
-### 3.4 Sistema de Vaga por Proximidade (Smart Parking)
-
-```mermaid
-flowchart TD
-    A[Condutor Seleciona Setor Desejado] --> B{Vagas Disponíveis<br/>no Setor?}
-    B -->|Sim| C[Atribui Vaga no Setor<br/>Escolhido]
-    B -->|Não| D[Algoritmo de Proximidade]
-    D --> E[Busca Vaga Mais Próxima<br/>em Setores Vizinhos]
-    E --> F[Apresenta Opção ao Condutor]
-    F --> G{Condutor Aceita?}
-    G -->|Sim| H[Reserva Vaga Sugerida]
-    G -->|Não| I[Mostra Próxima Opção]
-    I --> F
-```
-
-**Algoritmo de Proximidade**:
-1. Calcula distância euclidiana/manhattan do setor desejado
-2. Prioriza: mesmo andar → andar adjacente → setor mais próximo
-3. Considera tipo de vaga compatível (ex: não sugerir vaga PCD para carro comum)
-4. Exibe tempo estimado de caminhada até destino
-
----
-
-### 3.5 Banco de Dados - Vagas e Setores
-
-**Entidades Principais**:
-- **Setor** (id, nome, cor, andar, bloco, capacidade_total)
-- **Vaga** (id, setor_id, numero, tipo, status, tem_carregador, coordenadas_x, coordenadas_y)
-- **Ticket** (id, vaga_id, entrada, saida, valor, status_pagamento)
-- **Configuracao** (tolerancia_minutos, valor_hora, tempo_max_recarga_ev)
-
----
-
-### 3.6 Interface Única - Acessível e Simples
+## Estrutura de pastas
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  🅿️  ESTACIONAMENTO INTELIGENTE - SHOPPING                 │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│   🎯  ESCOLHA SEU TIPO DE VAGA:                            │
-│   ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐         │
-│   │COMUM│ │IDOSO│ │ PCD │ │ NEURO│ │ ELÉT│ │ MOTO│         │
-│   └─────┘ └─────┘ └─────┘ └─────┘ └─────┘ └─────┘         │
-│                                                             │
-│   📍  SETOR PREFERENCIAL:  [Azul ▼]  (Opcional)            │
-│                                                             │
-│   🟢 Vagas Livres: 47/120    🔴 Ocupadas: 73    ⚡ EV: 3/8 │
-│                                                             │
-│   ┌─────────────────────────────────────────────────────┐  │
-│   │  [ GERAR TICKET E ENTRAR ]      [ VER MAPA ]        │  │
-│   └─────────────────────────────────────────────────────┘  │
-│                                                             │
-│   ♿ Alto Contraste  🔊 Leitura de Tela  🌐 Libras          │
-└─────────────────────────────────────────────────────────────┘
+app/                 Backend FastAPI
+  main.py            App, rotas de sistema e montagem do frontend em "/"
+  database.py        Engine SQLite (CAPIM_DB_URL)
+  models.py          Modelos ORM
+  schemas.py         Schemas Pydantic (requests/responses)
+  seed.py            Dados de demonstração (determinístico)
+  routers/           Camada HTTP (vagas, tickets, setores, config, admin)
+  services/          Regras de negócio (cobrança, proximidade, ocupação)
+frontend/            Interface (index.html, styles.css, app.js)
+tests/               Testes pytest (banco temporário, nunca usa data/)
+postman/             Coleção Postman v2.1 + ambiente local
+scripts/             Utilitários (reset do banco, execução do Newman)
+data/                Banco SQLite local (ignorado pelo git, recriado no startup)
+docs/squad/          Artefatos do squad (PM, PO, Design, Tech Lead, Dev, QA)
 ```
 
-**Características de Acessibilidade**:
-- ♿ **WCAG 2.1 AA** - Contraste, navegação por teclado, leitores de tela
-- 🔊 **TTS Integrado** - Text-to-speech nativo
-- 🌐 **Libras** - Avatar de interpretação (opcional)
-- 📱 **Responsivo** - Funciona em totem, tablet, mobile
-- 🎨 **Alto Contraste** - Toggle imediato
-- ⌨️ **Navegação por Teclado** - Tab order lógico, atalhos
+## Como rodar
 
----
+Requisito: **Python 3.11 a 3.13** (os pins do `requirements.txt` não instalam no Python 3.14).
 
-## 🛠️ 4. Stack Tecnológica (Mínima para Hoje)
+```powershell
+# 1. ambiente virtual (Windows)
+py -3.13 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 
-| Item | Escolha | Por quê |
-|------|---------|---------|
-| **Linguagem** | Python 3.11+ | Rápido de prototipar, equipe conhece |
-| **API** | FastAPI | Docs automáticas (Swagger), validação nativa |
-| **Banco** | SQLite | Zero config, arquivo único, roda em qualquer lugar |
-| **Testes API** | Postman | Já conhecem, coleções compartilháveis |
-| **ORM** | SQLAlchemy (básico) | Simples, sem migrações complexas hoje |
-
-> **Nota**: Sem Docker, sem Alembic, sem PostgreSQL, sem CI/CD — foco no que roda **hoje**.
-
----
-
-## 🏗️ 5. Arquitetura Mínima (Para Hoje)
-
-### 5.1 Estrutura Simples
-
-```
-app/
-├── main.py              # FastAPI app + rotas diretas
-├── models.py            # SQLAlchemy models (Setor, Vaga, Ticket, Config)
-├── schemas.py           # Pydantic schemas (request/response)
-├── database.py          # SQLite connection + session
-└── services.py          # Lógica de negócio (proximidade, ticket, valor)
+# 2. subir a API (cria as tabelas e o seed no primeiro start)
+uvicorn app.main:app --reload
 ```
 
-### 5.2 Modelos Essenciais
+Linux/macOS: `python3.13 -m venv .venv && source .venv/bin/activate`.
 
-| Tabela | Campos Principais |
-|--------|-------------------|
-| **Setor** | id, nome, cor, andar, capacidade_total |
-| **Vaga** | id, setor_id, numero, tipo, status, tem_carregador, x, y |
-| **Ticket** | id, vaga_id, entrada, saida, valor, status_pagamento, placa |
-| **Config** | id, tolerancia_minutos (15), valor_hora (5.00), tempo_max_recarga_ev (120) |
+Depois abra:
 
-### 5.3 Endpoints Mínimos (5 no total)
+- `http://localhost:8000/` - interface (frontend)
+- `http://localhost:8000/docs` - Swagger da API
+- `http://localhost:8000/api/info` - informações da API (a raiz `/` serve o frontend)
 
-| Método | Endpoint | Descrição |
-|--------|----------|-----------|
-| `GET` | `/vagas/disponiveis` | Lista vagas livres (filtro: tipo, setor) |
-| `GET` | `/vagas/proximas` | Sugere vaga mais próxima se setor cheio |
-| `POST` | `/tickets/entrada` | Cria ticket, atribui vaga |
-| `POST` | `/tickets/{id}/saida` | Finaliza, calcula valor (com tolerância 15min) |
-| `GET` | `/config` | Retorna tolerância e valor/hora |
+## Reiniciar o banco
 
-> **Foco**: 5 endpoints que cobrem 100% do fluxo principal. Swagger em `/docs` para testar.
+O seed só roda quando o banco está vazio. Para voltar ao estado inicial (356 vagas, 10 tickets de exemplo):
 
----
-
-## 📋 6. Requisitos
-
-### 6.1 Requisitos Funcionais (RF)
-
-| ID | Requisito | Prioridade |
-|----|-----------|------------|
-| RF01 | Sistema deve permitir entrada sem login/cadastro | 🔴 |
-| RF02 | Sistema deve registrar entrada e emitir ticket com vaga/setor | 🔴 |
-| RF03 | Sistema deve aplicar tolerância de 15 min para passagem rápida | 🔴 |
-| RF03 | Sistema deve cobrar proporcional ao tempo após tolerância | 🔴 |
-| RF04 | Sistema deve gerenciar vagas por tipo (comum, idoso, PCD, neurodivergente, elétrico, moto) | 🔴 |
-| RF05 | Sistema deve indicar vagas elétricas com carregador disponível | 🔴 |
-| RF06 | Sistema deve sugerir vaga mais próxima quando setor preferido estiver cheio | 🔴 |
-| RF07 | Sistema deve exibir disponibilidade em tempo real por setor/tipo | 🟡 |
-| RF08 | Sistema deve permitir consulta de ticket ativo por ID/placa | 🟡 |
-| RF09 | Sistema deve calcular valor na saída baseado no tempo real | 🔴 |
-| RF10 | Interface deve ser acessível (WCAG 2.1 AA) | 🔴 |
-
-### 6.2 Requisitos Não Funcionais (RNF)
-
-| ID | Requisito | Métrica |
-|----|-----------|---------|
-| RNF01 | Tempo de resposta API < 200ms (p95) | Performance |
-| RNF02 | Disponibilidade 99.5% | Confiabilidade |
-| RNF03 | Interface carrega < 3s em 3G | Performance |
-| RNF04 | Suporte a 500 requisições simultâneas | Escalabilidade |
-| RNF05 | Dados persistidos com ACID | Consistência |
-| RNF06 | Logs de auditoria para todas operações | Rastreabilidade |
-| RNF07 | Conformidade LGPD (dados mínimos, anonimização) | Legal |
-| RNF08 | Deploy em container Docker | Operacional |
-
----
-
-## 🎭 7. Casos de Uso
-
-### UC01 - Entrada com Vaga Disponível no Setor Desejado
-**Ator**: Condutor  
-**Pré-condição**: Vagas livres no setor/tipo escolhido  
-**Fluxo Principal**:
-1. Condutor seleciona tipo de vaga (ex: Comum)
-2. Condutor seleciona setor preferido (ex: Azul) - opcional
-3. Sistema exibe vagas livres em tempo real
-4. Condutor confirma "Gerar Ticket"
-5. Sistema atribui vaga, registra entrada, imprime ticket
-6. Catraca libera acesso
-
-### UC02 - Entrada com Setor Cheio - Proximidade
-**Ator**: Condutor  
-**Pré-condição**: Setor desejado sem vagas do tipo selecionado  
-**Fluxo Principal**:
-1. Condutor seleciona tipo + setor preferido
-2. Sistema detecta indisponibilidade
-3. Sistema executa algoritmo de proximidade
-4. Sistema apresenta vaga alternativa + distância/tempo
-5. Condutor aceita ou recusa (mostra próxima opção)
-6. Ao aceitar: segue fluxo UC01
-
-### UC03 - Passagem Rápida (≤ 15 min)
-**Ator**: Condutor  
-**Fluxo Principal**:
-1. Condutor entra (ticket gerado)
-2. Condutor sai antes de 15 min
-3. Sistema calcula tempo = 0
-4. Valor = R$ 0,00 (isento)
-5. Catraca libera sem pagamento
-
-### UC04 - Estadia Normal (> 15 min)
-**Ator**: Condutor  
-**Fluxo Principal**:
-1. Condutor entra
-2. Condutor sai após 15 min
-3. Sistema calcula tempo total - 15 min tolerância
-4. Valor = horas * valor_hora (arredondado por hora cheia ou fração)
-5. Exibe valor, aguarda pagamento (integração futura)
-6. Confirma pagamento → libera catraca
-
-### UC05 - Vaga Elétrica com Carregador
-**Ator**: Condutor de VE  
-**Fluxo Principal**:
-1. Condutor seleciona "Elétrico"
-2. Sistema mostra apenas vagas com carregador livre
-3. Condutor escolhe, gera ticket
-4. Sistema monitora tempo de recarga (max 2h configurável)
-5. Alerta se exceder tempo (futuro: notificação app/whats)
-
----
-
-## 📅 8. Cronograma — **Hoje Até Meio-Dia**
-
-| Horário | Foco | Entregável |
-|---------|------|------------|
-| **Agora → 09:00** | Setup + Models + DB | SQLite rodando, tabelas criadas |
-| **09:00 → 10:30** | Endpoints core (5) | API funcional no `/docs` |
-| **10:30 → 11:30** | Lógica: tolerância 15min + proximidade | Regras de negócio OK |
-| **11:30 → 12:00** | Testes Postman + coleção | Collection pronta para demo |
-
-> **Meta**: API rodando, testada no Postman, pronta para apresentar ao meio-dia.
-
----
-
-## 🧪 9. Estratégia de Testes (Postman)
-
-### Coleções Postman Planejadas
-
-```
-📁 Hackarun - Estacionamento Inteligente
-├── 📁 01 - Setup & Health
-│   ├── GET /health
-│   └── GET /config
-├── 📁 02 - Setores
-│   ├── GET /setores
-│   ├── POST /setores (admin)
-│   └── GET /setores/{id}/vagas
-├── 📁 03 - Vagas
-│   ├── GET /vagas/disponiveis?tipo=comum&setor=azul
-│   ├── GET /vagas/proximas?setor_desejado=azul&tipo=comum
-│   └── GET /vagas/{id}
-├── 📁 04 - Tickets - Entrada
-│   ├── POST /tickets/entrada (comum, setor azul)
-│   ├── POST /tickets/entrada (idoso, sem setor)
-│   ├── POST /tickets/entrada (eletrico)
-│   └── POST /tickets/entrada (pcd, setor cheio -> proximidade)
-├── 📁 05 - Tickets - Saída
-│   ├── POST /tickets/{id}/saida (tolerancia - isento)
-│   ├── POST /tickets/{id}/saida (normal - cobrado)
-│   └── POST /tickets/{id}/saida (ev - tempo recarga)
-├── 📁 06 - Cenários de Carga
-│   ├── Múltiplas entradas simultâneas
-│   └── Stress test proximidade
-└── 📁 07 - Testes de Acessibilidade API
-    ├── Validação códigos de erro
-    └── Tempo de resposta
+```powershell
+python scripts/reset_db.py
+uvicorn app.main:app --reload
 ```
 
-### Critérios de Aceitação Automatizados (Postman Tests)
-```javascript
-// Exemplo: Teste de tolerância 15 min
-pm.test("Passagem rápida ≤ 15 min = valor 0", () => {
-    const response = pm.response.json();
-    pm.expect(response.valor).to.equal(0);
-    pm.expect(response.status_pagamento).to.equal("isento");
-});
+Para usar outro arquivo de banco, defina `CAPIM_DB_URL` (ex.: `sqlite:///C:/temp/teste.db`).
 
-// Teste de proximidade
-pm.test("Vaga sugerida é do tipo correto e mais próxima", () => {
-    const vaga = pm.response.json().vaga_sugerida;
-    pm.expect(vaga.tipo).to.equal("comum");
-    pm.expect(vaga.distancia_metros).to.be.below(100);
-});
+## Testes
+
+```powershell
+python -m pytest -q
 ```
 
----
+Os testes usam um banco temporário (via `CAPIM_DB_URL`) e recriam o seed a cada teste; o `data/` nunca é tocado.
 
-## 📁 10. Estrutura do Projeto (Mínima)
+## Postman
 
-```
-hackarun-estacionamento/
-├── app/
-│   ├── main.py           # FastAPI + 5 rotas
-│   ├── models.py         # 4 models SQLAlchemy
-│   ├── schemas.py        # Pydantic request/response
-│   ├── database.py       # Engine + session SQLite
-│   └── services.py       # Lógica: proximidade, ticket, valor
-├── postman/
-│   └── collection.json   # Coleção de testes
-├── requirements.txt      # fastapi, uvicorn, sqlalchemy, pydantic
-└── README.md
-```
+Arquivos em `postman/`:
 
-> **Não tem**: Docker, Alembic, testes automatizados, pasta docs/, pyproject.toml, .env — **não dá tempo hoje**.
+- `hackarun-estacionamento.postman_collection.json`
+- `local.postman_environment.json` (variável `baseUrl`, padrão `http://localhost:8000`)
 
----
+**No app do Postman:** importe os dois arquivos, selecione o ambiente "Local" e rode a coleção no Collection Runner **em sequência**. Pré-condição: banco recém-criado (`python scripts/reset_db.py` e subir a API), pois as requisições encadeiam variáveis (`ticketId`, `vagaSugerida`...) e consomem vagas.
 
-## 🚀 11. Como Executar (Hoje — Sem Docker)
+**Pelo Newman (linha de comando, requer Node.js):**
 
-```bash
-# 1. Criar venv e instalar
-python -m venv .venv
-source .venv/bin/activate
-pip install fastapi uvicorn sqlalchemy pydantic
+```powershell
+# automático: sobe a API com banco temporário novo, roda a coleção e encerra
+python scripts/run_newman.py
 
-# 2. Rodar (cria DB automaticamente)
-uvicorn app.main:app --reload --port 8000
-
-# 3. Testar
-# Swagger: http://localhost:8000/docs
-# Postman: importar postman/collection.json, base_url = http://localhost:8000
+# ou manual, com a API já rodando em banco novo
+npx -y newman run postman/hackarun-estacionamento.postman_collection.json -e postman/local.postman_environment.json
 ```
 
-> **Pronto em < 2 min**. Sem Docker, sem migrações, sem seed script — o `main.py` cria as tabelas e popula dados mínimos no startup.
+O Newman não é dependência do projeto (usa `npx`).
 
----
+## Documentação do squad
 
-## 📜 Créditos
-
-**HACKARUN 2026 — EQUIPE 44 — AERODACTYLE**  
-Guilherme Abreu · Álvaro Franco · Flávio Antônio · Matheus Dassoler  
-
-> "Tecnologia a serviço da inclusão e mobilidade urbana"
-
----
-
-**Documento versão**: 1.0  
-**Data**: 13/11/2026  
-**Status**: 🟡 **Desenvolvimento — Entrega hoje ao meio-dia**
-
----
-
-*Doc enxuto para o que dá tempo de fazer hoje. Atualizações conforme avancemos.*
+Análise e plano da v2.0 em [docs/squad/analise-projeto](docs/squad/analise-projeto) (diagnóstico D1-D22, decisões DT1-DT15, contratos de API) e registro do que foi implementado em [docs/squad/v2-0](docs/squad/v2-0).
