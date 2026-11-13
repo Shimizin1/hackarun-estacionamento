@@ -47,6 +47,11 @@ _US_MINUTO = 60 * 1_000_000
 _US_HORA = 3600 * 1_000_000
 
 
+def _hora_local(dt: datetime) -> str:
+    """Formata HH:MM em America/Araguaina (UTC-3, sem horário de verão); dt é UTC naive."""
+    return (dt - timedelta(hours=3)).strftime("%H:%M")
+
+
 def _ceil_div(a: int, b: int) -> int:
     return -(-a // b)
 
@@ -328,7 +333,7 @@ class TicketService:
 
         return (
             f"Entrada registrada! Vaga {vaga.numero} no setor {setor_nome} ({andar}){carregador}. "
-            f"Tolerância de {tolerancia} minutos até {ticket.entrada + timedelta(minutes=tolerancia):%H:%M}. "
+            f"Tolerância de {tolerancia} minutos até {_hora_local(ticket.entrada + timedelta(minutes=tolerancia))}. "
             f"Guarde seu código: {ticket.identificador}"
         )
 
