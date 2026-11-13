@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, update
 from app.models import (
     Ticket, Vaga, Setor, Configuracao, Carregador,
     TipoVaga, StatusVaga, StatusPagamento, StatusCarregador
@@ -180,15 +180,21 @@ class TicketService:
             )
             status = StatusPagamento.ISENTO if cobranca.isento else StatusPagamento.PENDENTE
 
-            ticket.saida = saida
-            ticket.valor = cobranca.valor
-            ticket.status_pagamento = status
-            ticket.updated_at = saida
+            # Saída atômica: só quem encontrar saida IS NULL fecha o ticket.
+            res = db.execute(
+                update(Ticket)
+                .where(Ticket.id == ticket.id, Ticket.saida.is_(None))
+                .values(saida=saida, valor=cobranca.valor,
+                        status_pagamento=status, updated_at=saida)
+            )
+            if res.rowcount != 1:
+                raise TicketJaFinalizado("Este ticket já teve a saída registrada")
 
             if ticket.vaga_id:
                 VagaService.liberar_vaga(db, ticket.vaga_id, commit=False)
 
             db.commit()
+            db.refresh(ticket)
         except Exception:
             db.rollback()
             raise

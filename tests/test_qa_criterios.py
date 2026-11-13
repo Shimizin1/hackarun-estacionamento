@@ -164,6 +164,20 @@ def test_entradas_concorrentes_nunca_dao_a_mesma_vaga(client):
     assert len(vagas) == len(set(vagas)) == 10
 
 
+def test_saidas_concorrentes_do_mesmo_ticket_um_200_e_um_409(client):
+    """R2: saida atomica; so uma thread fecha o ticket e o valor nao e sobrescrito."""
+    t = client.post("/tickets/entrada", json={"tipo_vaga": "comum"}).json()
+
+    def sair(_):
+        return client.post(f"/tickets/{t['identificador']}/saida")
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        resps = list(ex.map(sair, range(2)))
+    assert sorted(r.status_code for r in resps) == [200, 409], [r.status_code for r in resps]
+    ok = next(r for r in resps if r.status_code == 200).json()
+    atual = client.get(f"/tickets/{t['identificador']}").json()
+    assert atual["valor"] == ok["valor"]
+
+
 # ---- H04: contadores atualizam e batem entre endpoints ------------------------
 
 def test_livres_por_setor_caem_apos_entrada_e_sobem_na_saida(client):
