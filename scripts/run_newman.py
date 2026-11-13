@@ -51,13 +51,15 @@ def main() -> int:
             print("API não subiu a tempo.")
             return 2
         npx = shutil.which("npx") or "npx"
-        return subprocess.call(
-            [npx, "-y", "newman", "run",
-             "postman/hackarun-estacionamento.postman_collection.json",
-             "-e", "postman/local.postman_environment.json",
-             "--env-var", f"baseUrl={BASE}"],
-            cwd=RAIZ,
-        )
+        cmd = [npx, "-y", "newman", "run",
+               "postman/hackarun-estacionamento.postman_collection.json",
+               "-e", "postman/local.postman_environment.json",
+               "--env-var", f"baseUrl={BASE}"]
+        # Opcional (usado no CI): NEWMAN_JSON=caminho gera também o relatório JSON.
+        relatorio = os.environ.get("NEWMAN_JSON")
+        if relatorio:
+            cmd += ["--reporters", "cli,json", "--reporter-json-export", relatorio]
+        return subprocess.call(cmd, cwd=RAIZ)
     finally:
         if api.poll() is None:
             api.terminate()
